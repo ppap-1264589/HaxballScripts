@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      2.23
 // @description  Fix mapLoading + 0ms Instant Avatar (Smart Throttle) + Anti-Stutter
-// @author       You
+// @author       Hoang1264589
 // @include      *://*.haxball.com/*
 // @grant        unsafeWindow
 // @run-at       document-idle
