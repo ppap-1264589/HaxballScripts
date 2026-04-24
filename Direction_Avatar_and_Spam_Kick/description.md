@@ -1,5 +1,11 @@
 # Mô tả chức năng của script
 
+Tóm lại script này có hai chức năng
+
+- Dùng avatar thay đổi theo hướng mũi tên mình di chuyển
+
+- Spam macro
+
 ## Giao diện ban đầu
 
 Khi mới vào game, tool sẽ trông như thế này
