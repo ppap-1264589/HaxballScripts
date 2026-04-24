@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         HaxBall Avatar + Spam + Custom Keys
 // @namespace    http://tampermonkey.net/
-// @version      2.23
-// @description  Fix mapLoading + 0ms Instant Avatar (Smart Throttle) + Anti-Stutter
+// @version      2.24
+// @description  Fix mapLoading + 0ms Instant Avatar (Smart Throttle) + Anti-Stutter + Lobby Hotkeys
 // @author       Hoang1264589
 // @include      *://*.haxball.com/*
 // @grant        unsafeWindow
@@ -97,7 +97,7 @@
         <div id="hax-minimize-btn" title="Thu nhỏ" style="
           position:absolute;top:4px;right:4px;cursor:pointer;
           font-size:16px;line-height:10px;color:#888;font-weight:bold;padding:2px 6px;border-radius:4px;">&minus;</div>
-        <div style="font-size:10px;color:#888;margin-bottom:5px;letter-spacing:.05em;text-align:center;">HAXBALL TOOLS V2.23</div>
+        <div style="font-size:10px;color:#888;margin-bottom:5px;letter-spacing:.05em;text-align:center;">HAXBALL TOOLS V2.24</div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
           <span id="hax-av-status" style="font-size:12px;cursor:pointer;" title="Click để Bật/Tắt">${avatarEnabled ? '🟢 Avatar ON' : '🔴 Avatar OFF'}</span>
           <span id="hax-toggle-badge" title="Đổi phím" style="
@@ -228,6 +228,30 @@
     let isRebinding     = false;
 
     let watcherInterval = null;
+    let currentLobbyDoc = null;
+
+    // --- BẮT PHÍM Ở SẢNH CHỜ (LOBBY) ---
+    function lobbyKeyHandler(e) {
+      if (!e.isTrusted) return;
+
+      // Xử lý Rebind Key khi focus đang ở sảnh chờ
+      if (isRebinding) {
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        window.dispatchEvent(new CustomEvent('__hax_forwardRebindKey', { detail: { code: e.code } }));
+        return;
+      }
+
+      if (e.repeat || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      // Bỏ qua nếu đã vào phòng (currentScript đang chạy) để nhường quyền cho hàm onKeyDown bên dưới
+      if (currentScript !== null) return;
+
+      if (e.code === currentAvToggleKey) {
+        window.dispatchEvent(new CustomEvent('__hax_reqToggleAvatar'));
+      } else if (e.code === currentSpamToggleKey) {
+        window.dispatchEvent(new CustomEvent('__hax_reqToggleSpamMode'));
+      }
+    }
 
     window.addEventListener('__hax_setRebindState',      (e) => { isRebinding = e.detail.state; });
     window.addEventListener('__hax_updateKeys',          (e) => {
@@ -274,11 +298,8 @@
       let lastDir = '';
 
       // ── SMART THROTTLE ──────────────────────────────────────────────────
-      // Dùng performance.now() nhất quán (độ chính xác cao hơn Date.now())
-      // lastCmdTime được cập nhật SAU khi dispatch xong để đo thời gian thực tế
       const THROTTLE_MS = 40;
-      let lastCmdTime   = -THROTTLE_MS; // Khởi tạo âm để lần bấm ĐẦU TIÊN
-                                        // luôn vào nhánh instant (không delay)
+      let lastCmdTime   = -THROTTLE_MS;
       let throttleTimer = null;
 
       // ── SPAM ────────────────────────────────────────────────────────────
@@ -425,7 +446,6 @@
         nativeSetter.call(input, text);
         input.dispatchEvent(new KeyboardEvent('keydown', { keyCode: 13, key: 'Enter', bubbles: true, cancelable: true }));
         if (doc.activeElement !== canvas) canvas.focus();
-        // Khôi phục phím di chuyển đang giữ sau 1 frame
         setTimeout(() => {
           heldKeys.forEach(code => {
             if (movementKeys.has(code)) {
@@ -455,7 +475,6 @@
       function applyAvatar(dir) {
         lastDir = dir;
         sendCommand('/avatar ' + directionMap[dir]);
-        // FIX: cập nhật lastCmdTime SAU khi dispatch để đo đúng thời điểm gửi thực tế
         lastCmdTime = performance.now();
       }
 
@@ -465,21 +484,15 @@
         const dir = getDirection();
         if (dir === lastDir) return;
 
-        // FIX: dùng performance.now() nhất quán (không lẫn lộn với Date.now())
         const elapsed = performance.now() - lastCmdTime;
 
         if (elapsed >= THROTTLE_MS) {
-          // Đã nghỉ đủ → gửi NGAY, không delay
           if (throttleTimer) { clearTimeout(throttleTimer); throttleTimer = null; }
           applyAvatar(dir);
         } else {
-          // Bấm quá sát: đặt hẹn giờ phần còn thiếu
-          // FIX: chỉ tạo timer mới nếu chưa có — tránh reset timer liên tục
-          //      khi nhiều phím được bấm trong cùng 1 window throttle
           if (!throttleTimer) {
             throttleTimer = setTimeout(() => {
               throttleTimer = null;
-              // Lấy hướng hiện tại tại thời điểm timer chạy (không phải lúc schedule)
               const latestDir = getDirection();
               if (!paused && !mapLoading && doc.activeElement !== input && isLiveGame && latestDir !== lastDir) {
                 applyAvatar(latestDir);
@@ -559,7 +572,7 @@
       };
 
       currentInputRef = input;
-      console.log('✅ HaxBall Tools v2.23 — 0ms Instant Avatar + Smart Anti-Stutter');
+      console.log('✅ HaxBall Tools v2.24 — Lobby Hotkeys Added');
       return true;
     }
 
@@ -568,9 +581,20 @@
       watcherInterval = setInterval(() => {
         const frame  = document.querySelector('iframe.gameframe');
         const doc    = frame?.contentDocument;
+
+        // 1. NGAY TẠI SẢNH CHỜ: Add Listener luôn khi có iframe Document
+        if (doc && doc !== currentLobbyDoc) {
+          if (currentLobbyDoc) currentLobbyDoc.removeEventListener('keydown', lobbyKeyHandler, true);
+          doc.addEventListener('keydown', lobbyKeyHandler, true);
+          currentLobbyDoc = doc;
+        }
+
+        // 2. KHI VÀO PHÒNG: Tìm thấy canvas + input -> Chạy initForFrame
         const input  = doc?.querySelector('input[data-hook="input"]');
         const canvas = doc?.querySelector('canvas');
-        if (input && canvas && input !== currentInputRef) initForFrame(frame);
+        if (input && canvas && input !== currentInputRef) {
+          initForFrame(frame);
+        }
       }, 1000);
     }
 
