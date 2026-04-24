@@ -8,6 +8,7 @@ Các tool này chỉ dùng được trên máy tính, chưa có phương pháp l
 | Folder | Chức năng |
 |---|---|
 | Direction_Avatar_and_Spam_Kick | Code để đổi avatar theo hướng đi và auto spam kick |
+| Geo_Overrider | Code để đổi trường 'geo' trong localStorage của trình duyệt (đổi flag ingame) |
 
 
 # Hướng dẫn cách dùng
