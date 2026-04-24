@@ -23,9 +23,39 @@
 
     const PRESETS = {
         real: { name: '📍 Vị trí browser', data: null },
-        vn:   { name: '🇻🇳 Hà Nội, VN',        data: { lat: 21.0245,  lon: 105.84117, code: 'vn' } },
-        gb:   { name: '🇬🇧 Old Trafford, GB',   data: { lat: 53.4631,  lon: -2.2913,  code: 'gb' } },
-        us:   { name: '🇺🇸 New York, US',        data: { lat: 40.7128,  lon: -74.0060, code: 'us' } },
+        vn:   {
+            name: '🇻🇳 Hà Nội, VN',
+            data: {
+                lat: 21.024512345678,
+                lon: 105.841171234567,
+                code: 'vn'
+            }
+        },
+        gb:   {
+            name: '🇬🇧 Old Trafford, GB',
+            data: {
+                lat: 53.4631,
+                lon: -2.2913,
+                code: 'gb'
+            }
+        },
+        us:   {
+            name: '🇺🇸 New York, US',
+            data: {
+                lat: 40.7128,
+                lon: -74.0060,
+                code: 'us'
+            }
+        },
+
+        ar:   {
+            name: '🇦🇷 Río Cuarto, AR',
+            data: {
+                lat: -33.122072960747076,
+                lon: -64.34915075283122,
+                code: 'ar'
+            }
+        },
     };
 
     // ==================== GEO STORE ====================
