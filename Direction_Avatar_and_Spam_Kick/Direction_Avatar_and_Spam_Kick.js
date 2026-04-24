@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HaxBall Avatar + Spam + Custom Keys
 // @namespace    http://tampermonkey.net/
-// @version      2.24
+// @version      2.25
 // @description  Fix mapLoading + 0ms Instant Avatar (Smart Throttle) + Anti-Stutter + Lobby Hotkeys
 // @author       Hoang1264589
 // @include      *://*.haxball.com/*
@@ -515,7 +515,9 @@
           return;
         }
         if (e.code === currentAvToggleKey) {
-          if (avatarEnabled && isLiveGame && !mapLoading) sendCommand('/avatar ' + currentDefaultAvatar);
+          if (avatarEnabled && isLiveGame && !mapLoading) {
+            sendCommand(currentDefaultAvatar.trim() ? '/avatar ' + currentDefaultAvatar : '/clear_avatar');
+          }
           window.dispatchEvent(new CustomEvent('__hax_reqToggleAvatar'));
           return;
         }
@@ -549,13 +551,19 @@
           paused = true;
           lastDir = '';
           if (throttleTimer) { clearTimeout(throttleTimer); throttleTimer = null; }
-          if (isLiveGame && !mapLoading) sendCommand('/avatar ' + currentDefaultAvatar);
+          if (isLiveGame && !mapLoading) {
+            sendCommand(currentDefaultAvatar.trim() ? '/avatar ' + currentDefaultAvatar : '/clear_avatar');
+          }
         },
-        resume: () => { paused = false; },
+        resume: () => { paused = false; lastDir = ''; triggerAvatarUpdate(); },
         stopSpam,
         checkAndStartSpam,
         restoreHoldState,
-        applyDefaultAvatar: () => { if (isLiveGame && !mapLoading) sendCommand('/avatar ' + currentDefaultAvatar); },
+        applyDefaultAvatar: () => {
+          if (isLiveGame && !mapLoading) {
+            sendCommand(currentDefaultAvatar.trim() ? '/avatar ' + currentDefaultAvatar : '/clear_avatar');
+          }
+        },
         stop: () => {
           if (throttleTimer) { clearTimeout(throttleTimer); throttleTimer = null; }
           resetMapLoading();
