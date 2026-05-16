@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         HaxBall Avatar + Spam + Custom Keys
+// @name         HaxBall Avatar + Spam + Custom Movement Keys
 // @namespace    http://tampermonkey.net/
-// @version      2.25
-// @description  Fix mapLoading + 0ms Instant Avatar (Smart Throttle) + Anti-Stutter + Lobby Hotkeys
+// @version      2.27
+// @description  Fix mapLoading + 0ms Instant Avatar + Anti-Stutter + Bindable Keys + Chống dính tổ hợp phím (Ctrl/Shift/Alt)
 // @author       Hoang1264589
 // @include      *://*.haxball.com/*
 // @grant        unsafeWindow
@@ -17,11 +17,21 @@
   const DEFAULT_SPAM_ACTION   = 'KeyX';
   const DEFAULT_AVATAR_TEXT   = '😈';
 
+  const DEFAULT_UP_KEY    = 'KeyW';
+  const DEFAULT_DOWN_KEY  = 'KeyS';
+  const DEFAULT_LEFT_KEY  = 'KeyA';
+  const DEFAULT_RIGHT_KEY = 'KeyD';
+
   const STORE_AV_TOGGLE   = 'hax_avToggleKey';
   const STORE_SPAM_TOGGLE = 'hax_spamToggleKey';
   const STORE_SPAM_ACTION = 'hax_spamActionKey';
   const STORE_AV_TEXT     = 'hax_defaultAvatar';
   const STORE_MINIMIZED   = 'hax_isMinimized';
+
+  const STORE_UP_KEY    = 'hax_upKey';
+  const STORE_DOWN_KEY  = 'hax_downKey';
+  const STORE_LEFT_KEY  = 'hax_leftKey';
+  const STORE_RIGHT_KEY = 'hax_rightKey';
 
   function loadKey(k, def) { return localStorage.getItem(k) || def; }
   function saveKey(k, v)   { localStorage.setItem(k, v); }
@@ -31,6 +41,11 @@
   let spamActionKey     = loadKey(STORE_SPAM_ACTION, DEFAULT_SPAM_ACTION);
   let defaultAvatarText = loadKey(STORE_AV_TEXT,     DEFAULT_AVATAR_TEXT);
   let isMinimized       = loadKey(STORE_MINIMIZED,   'false') === 'true';
+
+  let upKey    = loadKey(STORE_UP_KEY,    DEFAULT_UP_KEY);
+  let downKey  = loadKey(STORE_DOWN_KEY,  DEFAULT_DOWN_KEY);
+  let leftKey  = loadKey(STORE_LEFT_KEY,  DEFAULT_LEFT_KEY);
+  let rightKey = loadKey(STORE_RIGHT_KEY, DEFAULT_RIGHT_KEY);
 
   let avatarEnabled   = true;
   let spamModeEnabled = false;
@@ -43,7 +58,13 @@
     if (code === 'ControlLeft' || code === 'ControlRight') return 'Ctrl';
     if (code === 'Space') return 'Space';
     if (code === 'ShiftLeft' || code === 'ShiftRight') return 'Shift';
-    return code.replace('Key','').replace('Arrow','').replace('Digit','').replace('Numpad','Num ');
+    if (code.startsWith('Arrow')) return code.replace('Arrow', '');
+    return code.replace('Key','').replace('Digit','').replace('Numpad','Num ');
+  }
+
+  // HÀM KIỂM TRA TỔ HỢP PHÍM (ANTI-MODIFIER)
+  function isModifierHeld(e) {
+    return e.ctrlKey || e.metaKey || e.shiftKey || e.altKey;
   }
 
   function toggleMinimize() {
@@ -70,8 +91,8 @@
     panel.removeAttribute('style');
     Object.assign(panel.style, {
       position: 'fixed', bottom: '45px', right: '4px', zIndex: 99999,
-      background: 'rgba(26, 26, 46, 0.6)', color: '#ddd', border: '1px solid #333',
-      fontFamily: 'sans-serif', userSelect: 'none', boxSizing: 'border-box'
+      background: 'rgba(26, 26, 46, 0.85)', color: '#ddd', border: '1px solid #333',
+      fontFamily: 'sans-serif', userSelect: 'none', boxSizing: 'border-box',
     });
 
     if (isMinimized) {
@@ -90,14 +111,15 @@
         </div>`;
     } else {
       Object.assign(panel.style, {
-        borderRadius: '8px', padding: '6px 10px', fontSize: '12px',
-        minWidth: '190px', cursor: 'default'
+        borderRadius: '8px', padding: '8px 10px', fontSize: '12px',
+        minWidth: '200px', cursor: 'default'
       });
       panel.innerHTML = `
         <div id="hax-minimize-btn" title="Thu nhỏ" style="
           position:absolute;top:4px;right:4px;cursor:pointer;
           font-size:16px;line-height:10px;color:#888;font-weight:bold;padding:2px 6px;border-radius:4px;">&minus;</div>
-        <div style="font-size:10px;color:#888;margin-bottom:5px;letter-spacing:.05em;text-align:center;">HAXBALL TOOLS V2.24</div>
+        <div style="font-size:10px;color:#888;margin-bottom:5px;letter-spacing:.05em;text-align:center;">HAX TOOLS V2.27</div>
+
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
           <span id="hax-av-status" style="font-size:12px;cursor:pointer;" title="Click để Bật/Tắt">${avatarEnabled ? '🟢 Avatar ON' : '🔴 Avatar OFF'}</span>
           <span id="hax-toggle-badge" title="Đổi phím" style="
@@ -110,24 +132,47 @@
             width:30px;height:18px;text-align:center;background:#2a2a3e;border:1px solid #444;
             color:#fff;border-radius:4px;font-size:13px;padding:0;outline:none;">
         </div>
-        <hr style="border:0;border-top:1px solid #333;margin:6px 0;">
+
+        <hr style="border:0;border-top:1px solid #333;margin:5px 0;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
           <span id="hax-spam-status" style="font-size:12px;cursor:pointer;" title="Click để Bật/Tắt">${spamModeEnabled ? '🟢 Spam ON' : '🔴 Spam OFF'}</span>
           <span id="hax-spam-badge" title="Đổi phím" style="
             font-family:monospace;background:#2a2a3e;border:1px solid #444;
             border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px;color:#ccc">${keyLabel(spamToggleKey)}</span>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-size:12px;color:#aaa">Phím Đá/Spam:</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+          <span style="font-size:12px;color:#aaa">Phím Đá:</span>
           <span id="hax-action-badge" title="Cài đặt phím" style="
             font-family:monospace;background:#4a2a2a;border:1px solid #644;
             border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px;color:#fcc">${keyLabel(spamActionKey)}</span>
         </div>
+
+        <hr style="border:0;border-top:1px solid #333;margin:5px 0;">
+        <div style="font-size:10px;color:#666;margin-bottom:4px;text-align:center;">PHÍM DI CHUYỂN</div>
+        <div style="display:grid;grid-template-columns: 1fr 1fr; gap: 3px; margin-bottom:2px;">
+          <span style="font-size:11px;color:#aaa">Lên:</span>
+          <span id="hax-up-badge" title="Đổi phím" style="font-family:monospace;background:#1e3a1e;border:1px solid #364;border-radius:4px;padding:1px 4px;cursor:pointer;font-size:11px;color:#afa;text-align:right;">${keyLabel(upKey)}</span>
+
+          <span style="font-size:11px;color:#aaa">Xuống:</span>
+          <span id="hax-down-badge" title="Đổi phím" style="font-family:monospace;background:#1e3a1e;border:1px solid #364;border-radius:4px;padding:1px 4px;cursor:pointer;font-size:11px;color:#afa;text-align:right;">${keyLabel(downKey)}</span>
+
+          <span style="font-size:11px;color:#aaa">Trái:</span>
+          <span id="hax-left-badge" title="Đổi phím" style="font-family:monospace;background:#1e3a1e;border:1px solid #364;border-radius:4px;padding:1px 4px;cursor:pointer;font-size:11px;color:#afa;text-align:right;">${keyLabel(leftKey)}</span>
+
+          <span style="font-size:11px;color:#aaa">Phải:</span>
+          <span id="hax-right-badge" title="Đổi phím" style="font-family:monospace;background:#1e3a1e;border:1px solid #364;border-radius:4px;padding:1px 4px;cursor:pointer;font-size:11px;color:#afa;text-align:right;">${keyLabel(rightKey)}</span>
+        </div>
+
         <div id="hax-rebind-hint" style="font-size:10px;color:#666;margin-top:4px;height:8px;line-height:8px;text-align:center;"></div>`;
 
       panel.querySelector('#hax-toggle-badge').addEventListener('mousedown',  (e) => { e.preventDefault(); startRebind('avatar'); });
       panel.querySelector('#hax-spam-badge').addEventListener('mousedown',    (e) => { e.preventDefault(); startRebind('spamToggle'); });
       panel.querySelector('#hax-action-badge').addEventListener('mousedown',  (e) => { e.preventDefault(); startRebind('spamAction'); });
+
+      panel.querySelector('#hax-up-badge').addEventListener('mousedown',    (e) => { e.preventDefault(); startRebind('up'); });
+      panel.querySelector('#hax-down-badge').addEventListener('mousedown',  (e) => { e.preventDefault(); startRebind('down'); });
+      panel.querySelector('#hax-left-badge').addEventListener('mousedown',  (e) => { e.preventDefault(); startRebind('left'); });
+      panel.querySelector('#hax-right-badge').addEventListener('mousedown', (e) => { e.preventDefault(); startRebind('right'); });
 
       const avInput = panel.querySelector('#hax-av-input');
       avInput.addEventListener('keydown', (e) => { e.stopPropagation(); });
@@ -155,8 +200,12 @@
     rebindTarget = target;
     const hint = panel.querySelector('#hax-rebind-hint');
     hint.style.color = '#f0c060';
-    hint.textContent = `Bấm phím... (Esc hủy)`;
-    const badgeId = target === 'avatar' ? '#hax-toggle-badge' : target === 'spamToggle' ? '#hax-spam-badge' : '#hax-action-badge';
+    hint.textContent = `Bấm phím mới... (Esc hủy)`;
+
+    const badgeId = target === 'avatar' ? '#hax-toggle-badge' :
+                    target === 'spamToggle' ? '#hax-spam-badge' :
+                    target === 'spamAction' ? '#hax-action-badge' :
+                    `#hax-${target}-badge`;
     const badge = panel.querySelector(badgeId);
     badge.textContent = '…'; badge.style.borderColor = '#f0c060'; badge.style.color = '#f0c060';
     window.dispatchEvent(new CustomEvent('__hax_setRebindState', { detail: { state: true } }));
@@ -172,7 +221,14 @@
       if      (rebindTarget === 'avatar')     { avToggleKey   = code; saveKey(STORE_AV_TOGGLE,   avToggleKey); }
       else if (rebindTarget === 'spamToggle') { spamToggleKey = code; saveKey(STORE_SPAM_TOGGLE, spamToggleKey); }
       else if (rebindTarget === 'spamAction') { spamActionKey = code; saveKey(STORE_SPAM_ACTION, spamActionKey); }
-      window.dispatchEvent(new CustomEvent('__hax_updateKeys', { detail: { avToggleKey, spamToggleKey, spamActionKey } }));
+      else if (rebindTarget === 'up')         { upKey         = code; saveKey(STORE_UP_KEY,    upKey); }
+      else if (rebindTarget === 'down')       { downKey       = code; saveKey(STORE_DOWN_KEY,  downKey); }
+      else if (rebindTarget === 'left')       { leftKey       = code; saveKey(STORE_LEFT_KEY,  leftKey); }
+      else if (rebindTarget === 'right')      { rightKey      = code; saveKey(STORE_RIGHT_KEY, rightKey); }
+
+      window.dispatchEvent(new CustomEvent('__hax_updateKeys', {
+        detail: { avToggleKey, spamToggleKey, spamActionKey, upKey, downKey, leftKey, rightKey }
+      }));
       hint.style.color = '#6f6'; hint.textContent = 'Đã lưu!';
     }
     rebindTarget = null;
@@ -186,6 +242,8 @@
 
   window.addEventListener('keydown', (e) => {
     if (!rebindTarget) return;
+    // CHỐNG BIND TỔ HỢP PHÍM: Nếu đang bấm Ctrl/Shift/Alt thì bỏ qua
+    if (isModifierHeld(e)) return;
     e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
     processRebindKey(e.code);
   }, true);
@@ -204,6 +262,9 @@
 
   window.addEventListener('keydown', (e) => {
     if (rebindTarget || e.repeat || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    // CHỐNG KÍCH HOẠT TOOL BẰNG TỔ HỢP PHÍM
+    if (isModifierHeld(e)) return;
+
     if (e.code === avToggleKey)   toggleAvatar();
     if (e.code === spamToggleKey) toggleSpamMode();
   });
@@ -221,6 +282,11 @@
     let currentSpamActionKey = ${JSON.stringify(spamActionKey)};
     let currentDefaultAvatar = ${JSON.stringify(defaultAvatarText)};
 
+    let currentUpKey    = ${JSON.stringify(upKey)};
+    let currentDownKey  = ${JSON.stringify(downKey)};
+    let currentLeftKey  = ${JSON.stringify(leftKey)};
+    let currentRightKey = ${JSON.stringify(rightKey)};
+
     let avatarEnabled   = true;
     let spamModeEnabled = false;
     let currentScript   = null;
@@ -230,27 +296,27 @@
     let watcherInterval = null;
     let currentLobbyDoc = null;
 
-    // --- BẮT PHÍM Ở SẢNH CHỜ (LOBBY) ---
+    // HÀM CHỐNG TỔ HỢP PHÍM BÊN TRONG IFRAME
+    function isModifierHeld(e) {
+      return e.ctrlKey || e.metaKey || e.shiftKey || e.altKey;
+    }
+
     function lobbyKeyHandler(e) {
       if (!e.isTrusted) return;
-
-      // Xử lý Rebind Key khi focus đang ở sảnh chờ
       if (isRebinding) {
+        // CHỐNG GHI NHẬN REBIND NẾU LÀ TỔ HỢP PHÍM
+        if (isModifierHeld(e)) return;
         e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
         window.dispatchEvent(new CustomEvent('__hax_forwardRebindKey', { detail: { code: e.code } }));
         return;
       }
-
       if (e.repeat || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      // CHỐNG BẬT TẮT TOOL BẰNG TỔ HỢP PHÍM Ở SẢNH
+      if (isModifierHeld(e)) return;
 
-      // Bỏ qua nếu đã vào phòng (currentScript đang chạy) để nhường quyền cho hàm onKeyDown bên dưới
       if (currentScript !== null) return;
-
-      if (e.code === currentAvToggleKey) {
-        window.dispatchEvent(new CustomEvent('__hax_reqToggleAvatar'));
-      } else if (e.code === currentSpamToggleKey) {
-        window.dispatchEvent(new CustomEvent('__hax_reqToggleSpamMode'));
-      }
+      if (e.code === currentAvToggleKey) window.dispatchEvent(new CustomEvent('__hax_reqToggleAvatar'));
+      else if (e.code === currentSpamToggleKey) window.dispatchEvent(new CustomEvent('__hax_reqToggleSpamMode'));
     }
 
     window.addEventListener('__hax_setRebindState',      (e) => { isRebinding = e.detail.state; });
@@ -258,6 +324,11 @@
       currentAvToggleKey   = e.detail.avToggleKey;
       currentSpamToggleKey = e.detail.spamToggleKey;
       currentSpamActionKey = e.detail.spamActionKey;
+      currentUpKey         = e.detail.upKey;
+      currentDownKey       = e.detail.downKey;
+      currentLeftKey       = e.detail.leftKey;
+      currentRightKey      = e.detail.rightKey;
+      if (currentScript) currentScript.resetDirState();
     });
     window.addEventListener('__hax_updateDefaultAvatar', (e) => {
       currentDefaultAvatar = e.detail.text;
@@ -291,60 +362,52 @@
         'up-right':'⬈','up-left':'⬉','down-right':'⬊','down-left':'⬋','idle':'•',
       };
 
-      const movementKeys = new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyS','KeyA','KeyD']);
-      const heldKeys     = new Set();
+      function getMovementKeys() {
+        return new Set([
+          currentUpKey, currentDownKey, currentLeftKey, currentRightKey,
+          'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'
+        ]);
+      }
 
+      const heldKeys     = new Set();
       let paused  = !avatarEnabled;
       let lastDir = '';
 
-      // ── SMART THROTTLE ──────────────────────────────────────────────────
       const THROTTLE_MS = 40;
       let lastCmdTime   = -THROTTLE_MS;
       let throttleTimer = null;
-
-      // ── SPAM ────────────────────────────────────────────────────────────
       let spamActive = false;
       let spamTimer  = null;
 
-      // ── MAP CHANGE DETECTION ────────────────────────────────────────────
       let mapLoading      = false;
       let mapLoadCooldown = null;
       let mapLoadFallback = null;
 
       function resetMapLoading() {
-        mapLoading = false;
-        lastDir    = '';
+        mapLoading = false; lastDir = '';
         if (mapLoadCooldown) { clearTimeout(mapLoadCooldown); mapLoadCooldown = null; }
         if (mapLoadFallback) { clearTimeout(mapLoadFallback); mapLoadFallback = null; }
       }
 
       function onMapChange() {
         if (mapLoading) return;
-        mapLoading = true;
-        lastDir    = '';
+        mapLoading = true; lastDir = '';
         if (throttleTimer) { clearTimeout(throttleTimer); throttleTimer = null; }
-
         if (mapLoadCooldown) clearTimeout(mapLoadCooldown);
         if (mapLoadFallback) clearTimeout(mapLoadFallback);
-
         mapLoadCooldown = setTimeout(() => {
           mapLoadCooldown = null;
           const newCanvas = doc.querySelector('canvas');
           if (newCanvas && newCanvas !== canvas) initForFrame(frame);
           else resetMapLoading();
         }, 1500);
-
-        mapLoadFallback = setTimeout(() => {
-          if (mapLoading) resetMapLoading();
-        }, 5000);
+        mapLoadFallback = setTimeout(() => { if (mapLoading) resetMapLoading(); }, 5000);
       }
 
       const bodyObserver = new MutationObserver((mutations) => {
         for (const m of mutations) {
           for (const node of m.removedNodes) {
-            if (node === canvas || (node.nodeType === 1 && node.tagName === 'CANVAS')) {
-              onMapChange();
-            }
+            if (node === canvas || (node.nodeType === 1 && node.tagName === 'CANVAS')) onMapChange();
           }
           for (const node of m.addedNodes) {
             if (node.nodeType === 1 && node.tagName === 'CANVAS') onMapChange();
@@ -352,9 +415,7 @@
         }
       });
       bodyObserver.observe(doc.body, { childList: true, subtree: false });
-      if (canvas.parentElement && canvas.parentElement !== doc.body) {
-        bodyObserver.observe(canvas.parentElement, { childList: true });
-      }
+      if (canvas.parentElement && canvas.parentElement !== doc.body) bodyObserver.observe(canvas.parentElement, { childList: true });
 
       const canvasResizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
@@ -371,16 +432,13 @@
       });
       inputResizeObserver.observe(input);
 
-      // ── CHAT OBSERVER (ẩn thông báo "/avatar set") ─────────────────────
       const chatObserver = new MutationObserver((mutations) => {
         const toRemove = [];
         for (const m of mutations) {
           for (const node of m.addedNodes) {
             if (node.nodeType === Node.ELEMENT_NODE) {
               const txt = node.textContent || '';
-              if ((txt.includes('Avatar set') || txt.includes('Avatar cleared')) && txt.length < 100) {
-                toRemove.push(node);
-              }
+              if ((txt.includes('Avatar set') || txt.includes('Avatar cleared')) && txt.length < 100) toRemove.push(node);
             }
           }
         }
@@ -391,26 +449,15 @@
       });
       chatObserver.observe(doc.body, { childList: true, subtree: true });
 
-      // ── SPAM ─────────────────────────────────────────────────────────────
       function startSpam() {
         if (spamActive || !isLiveGame || mapLoading) return;
         spamActive = true;
         const loop = () => {
-          if (!heldKeys.has(currentSpamActionKey) || !spamModeEnabled || !isLiveGame || mapLoading) {
-            stopSpam(); return;
-          }
-          canvas.dispatchEvent(new KeyboardEvent('keyup', {
-            code: currentSpamActionKey,
-            key:  currentSpamActionKey.replace('Key','').toLowerCase(),
-            bubbles: true, cancelable: true
-          }));
+          if (!heldKeys.has(currentSpamActionKey) || !spamModeEnabled || !isLiveGame || mapLoading) { stopSpam(); return; }
+          canvas.dispatchEvent(new KeyboardEvent('keyup', { code: currentSpamActionKey, key: currentSpamActionKey.replace('Key','').toLowerCase(), bubbles: true, cancelable: true }));
           setTimeout(() => {
             if (heldKeys.has(currentSpamActionKey) && spamModeEnabled && isLiveGame && !mapLoading) {
-              canvas.dispatchEvent(new KeyboardEvent('keydown', {
-                code: currentSpamActionKey,
-                key:  currentSpamActionKey.replace('Key','').toLowerCase(),
-                bubbles: true, cancelable: true
-              }));
+              canvas.dispatchEvent(new KeyboardEvent('keydown', { code: currentSpamActionKey, key: currentSpamActionKey.replace('Key','').toLowerCase(), bubbles: true, cancelable: true }));
             }
           }, 30);
         };
@@ -426,21 +473,15 @@
       }
 
       function checkAndStartSpam() {
-        if (spamModeEnabled && heldKeys.has(currentSpamActionKey) && doc.activeElement !== input && isLiveGame && !mapLoading)
-          startSpam();
+        if (spamModeEnabled && heldKeys.has(currentSpamActionKey) && doc.activeElement !== input && isLiveGame && !mapLoading) startSpam();
       }
 
       function restoreHoldState() {
         if (heldKeys.has(currentSpamActionKey) && doc.activeElement !== input && isLiveGame && !mapLoading) {
-          canvas.dispatchEvent(new KeyboardEvent('keydown', {
-            code: currentSpamActionKey,
-            key:  currentSpamActionKey.replace('Key','').toLowerCase(),
-            bubbles: true, cancelable: true
-          }));
+          canvas.dispatchEvent(new KeyboardEvent('keydown', { code: currentSpamActionKey, key: currentSpamActionKey.replace('Key','').toLowerCase(), bubbles: true, cancelable: true }));
         }
       }
 
-      // ── SEND COMMAND ─────────────────────────────────────────────────────
       function sendCommand(text) {
         if (!isLiveGame || mapLoading) return;
         nativeSetter.call(input, text);
@@ -448,19 +489,16 @@
         if (doc.activeElement !== canvas) canvas.focus();
         setTimeout(() => {
           heldKeys.forEach(code => {
-            if (movementKeys.has(code)) {
-              canvas.dispatchEvent(new KeyboardEvent('keydown', { code, bubbles: true, cancelable: true }));
-            }
+            if (getMovementKeys().has(code)) canvas.dispatchEvent(new KeyboardEvent('keydown', { code, bubbles: true, cancelable: true }));
           });
         }, 0);
       }
 
-      // ── AVATAR UPDATE VỚI SMART THROTTLE ────────────────────────────────
       function getDirection() {
-        const up    = heldKeys.has('ArrowUp')    || heldKeys.has('KeyW');
-        const down  = heldKeys.has('ArrowDown')  || heldKeys.has('KeyS');
-        const left  = heldKeys.has('ArrowLeft')  || heldKeys.has('KeyA');
-        const right = heldKeys.has('ArrowRight') || heldKeys.has('KeyD');
+        const up    = heldKeys.has(currentUpKey)    || heldKeys.has('ArrowUp');
+        const down  = heldKeys.has(currentDownKey)  || heldKeys.has('ArrowDown');
+        const left  = heldKeys.has(currentLeftKey)  || heldKeys.has('ArrowLeft');
+        const right = heldKeys.has(currentRightKey) || heldKeys.has('ArrowRight');
         if (up && right)   return 'up-right';
         if (up && left)    return 'up-left';
         if (down && right) return 'down-right';
@@ -480,12 +518,9 @@
 
       function triggerAvatarUpdate() {
         if (paused || mapLoading || doc.activeElement === input || !isLiveGame) return;
-
         const dir = getDirection();
         if (dir === lastDir) return;
-
         const elapsed = performance.now() - lastCmdTime;
-
         if (elapsed >= THROTTLE_MS) {
           if (throttleTimer) { clearTimeout(throttleTimer); throttleTimer = null; }
           applyAvatar(dir);
@@ -494,18 +529,17 @@
             throttleTimer = setTimeout(() => {
               throttleTimer = null;
               const latestDir = getDirection();
-              if (!paused && !mapLoading && doc.activeElement !== input && isLiveGame && latestDir !== lastDir) {
-                applyAvatar(latestDir);
-              }
+              if (!paused && !mapLoading && doc.activeElement !== input && isLiveGame && latestDir !== lastDir) applyAvatar(latestDir);
             }, THROTTLE_MS - elapsed);
           }
         }
       }
 
-      // ── KEYBOARD EVENTS ──────────────────────────────────────────────────
       function onKeyDown(e) {
         if (!e.isTrusted) return;
         if (isRebinding) {
+          // CHỐNG GHI NHẬN REBIND NẾU LÀ TỔ HỢP PHÍM
+          if (isModifierHeld(e)) return;
           e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
           window.dispatchEvent(new CustomEvent('__hax_forwardRebindKey', { detail: { code: e.code } }));
           return;
@@ -514,10 +548,12 @@
           if (e.code && e.code !== 'Enter') heldKeys.add(e.code);
           return;
         }
+
+        // CHỐNG KÍCH HOẠT TOOL BẰNG TỔ HỢP PHÍM TRONG TRẬN
+        if (isModifierHeld(e)) return;
+
         if (e.code === currentAvToggleKey) {
-          if (avatarEnabled && isLiveGame && !mapLoading) {
-            sendCommand(currentDefaultAvatar.trim() ? '/avatar ' + currentDefaultAvatar : '/clear_avatar');
-          }
+          if (avatarEnabled && isLiveGame && !mapLoading) sendCommand(currentDefaultAvatar.trim() ? '/avatar ' + currentDefaultAvatar : '/clear_avatar');
           window.dispatchEvent(new CustomEvent('__hax_reqToggleAvatar'));
           return;
         }
@@ -527,42 +563,33 @@
         }
 
         heldKeys.add(e.code);
-
-        if (movementKeys.has(e.code)) triggerAvatarUpdate();
-
+        if (getMovementKeys().has(e.code)) triggerAvatarUpdate();
         if (e.code === currentSpamActionKey && spamModeEnabled && isLiveGame && !mapLoading) startSpam();
       }
 
       function onKeyUp(e) {
         if (!e.isTrusted || isRebinding) return;
         heldKeys.delete(e.code);
-
-        if (movementKeys.has(e.code)) triggerAvatarUpdate();
-
+        if (getMovementKeys().has(e.code)) triggerAvatarUpdate();
         if (e.code === currentSpamActionKey) stopSpam();
       }
 
       doc.addEventListener('keydown', onKeyDown, true);
       doc.addEventListener('keyup',   onKeyUp,   true);
 
-      // ── API ───────────────────────────────────────────────────────────────
       currentScript = {
         pause: () => {
-          paused = true;
-          lastDir = '';
+          paused = true; lastDir = '';
           if (throttleTimer) { clearTimeout(throttleTimer); throttleTimer = null; }
-          if (isLiveGame && !mapLoading) {
-            sendCommand(currentDefaultAvatar.trim() ? '/avatar ' + currentDefaultAvatar : '/clear_avatar');
-          }
+          if (isLiveGame && !mapLoading) sendCommand(currentDefaultAvatar.trim() ? '/avatar ' + currentDefaultAvatar : '/clear_avatar');
         },
         resume: () => { paused = false; lastDir = ''; triggerAvatarUpdate(); },
         stopSpam,
         checkAndStartSpam,
         restoreHoldState,
+        resetDirState: () => { lastDir = ''; triggerAvatarUpdate(); },
         applyDefaultAvatar: () => {
-          if (isLiveGame && !mapLoading) {
-            sendCommand(currentDefaultAvatar.trim() ? '/avatar ' + currentDefaultAvatar : '/clear_avatar');
-          }
+          if (isLiveGame && !mapLoading) sendCommand(currentDefaultAvatar.trim() ? '/avatar ' + currentDefaultAvatar : '/clear_avatar');
         },
         stop: () => {
           if (throttleTimer) { clearTimeout(throttleTimer); throttleTimer = null; }
@@ -580,7 +607,7 @@
       };
 
       currentInputRef = input;
-      console.log('✅ HaxBall Tools v2.24 — Lobby Hotkeys Added');
+      console.log('✅ HaxBall Tools v2.27 — Anti-Modifier Keys Active');
       return true;
     }
 
@@ -589,25 +616,18 @@
       watcherInterval = setInterval(() => {
         const frame  = document.querySelector('iframe.gameframe');
         const doc    = frame?.contentDocument;
-
-        // 1. NGAY TẠI SẢNH CHỜ: Add Listener luôn khi có iframe Document
         if (doc && doc !== currentLobbyDoc) {
           if (currentLobbyDoc) currentLobbyDoc.removeEventListener('keydown', lobbyKeyHandler, true);
           doc.addEventListener('keydown', lobbyKeyHandler, true);
           currentLobbyDoc = doc;
         }
-
-        // 2. KHI VÀO PHÒNG: Tìm thấy canvas + input -> Chạy initForFrame
         const input  = doc?.querySelector('input[data-hook="input"]');
         const canvas = doc?.querySelector('canvas');
-        if (input && canvas && input !== currentInputRef) {
-          initForFrame(frame);
-        }
+        if (input && canvas && input !== currentInputRef) initForFrame(frame);
       }, 1000);
     }
 
     startWatcher();
-
   })();
   `;
   document.head.appendChild(script);
