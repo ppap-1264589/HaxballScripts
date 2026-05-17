@@ -20,6 +20,7 @@
   const ACTIVE_KEY         = 'hax_aas_active_profile';
   const ORDER_KEY          = 'hax_aas_order';
   const MIN_KEY            = 'hax_aas_min';
+  const DIRECTION_CUSTOM_MIN_KEY = 'hax_aas_direction_custom_min';
   const POS_KEY            = 'hax_aas_pos';
   const ENABLED_KEY        = 'hax_aas_enabled';
   const STOP_KEY           = 'hax_aas_stop_key';
@@ -302,8 +303,8 @@
     } else {
       panelEl.style.top = '';
       panelEl.style.left = '';
-      panelEl.style.bottom = '45px';
-      panelEl.style.right = '10px';
+      panelEl.style.bottom = '24px';
+      panelEl.style.right = '4px';
     }
   }
 
@@ -313,6 +314,7 @@
   let activeProfile = loadActiveProfile();
 
   let isMinimized = localStorage.getItem(MIN_KEY) === 'true';
+  let isDirectionCustomMinimized = localStorage.getItem(DIRECTION_CUSTOM_MIN_KEY) !== 'false';
   let scriptEnabled = localStorage.getItem(ENABLED_KEY) !== 'false';
   let stopBindCode = loadKey(STOP_KEY, DEFAULT_STOP_BIND);
   let autoBindCode = loadKey(AUTO_KEY, DEFAULT_AUTO_BIND);
@@ -531,7 +533,7 @@
 
     .aa-profile-list {
       display: flex; flex-direction: column; gap: 3px;
-      overflow-y: auto; max-height: 130px;
+      overflow-y: auto; max-height: 99px;
       scrollbar-width: thin; scrollbar-color: #444 transparent;
       margin-bottom: 6px;
     }
@@ -595,7 +597,7 @@
     .aa-drag-grip:active { cursor: grabbing; }
 
     .aa-token-scroll {
-      overflow-y: auto; max-height: 230px;
+      overflow-y: auto; max-height: 129px;
       scrollbar-width: thin; scrollbar-color: #444 transparent;
       padding-right: 2px;
     }
@@ -816,7 +818,47 @@
     top.appendChild(right);
     section.appendChild(top);
 
-    const defaults = mkEl('div', { style: 'display:flex;align-items:center;gap:6px;justify-content:space-between;margin-bottom:6px;' });
+    const moveGrid = mkEl('div', { style: 'display:grid;grid-template-columns:repeat(4,minmax(86px,1fr));gap:4px;width:100%;' });
+    [
+      ['up', 'UP', upKey],
+      ['down', 'DOWN', downKey],
+      ['left', 'LEFT', leftKey],
+      ['right', 'RIGHT', rightKey]
+    ].forEach(([target, label, code]) => {
+      const box = mkEl('div', { style: 'display:flex;align-items:center;justify-content:space-between;gap:4px;background:rgba(26,26,46,.55);border:1px solid #333;border-radius:4px;padding:3px 4px;min-width:0;height:25px;' });
+      box.appendChild(mkEl('span', { textContent: label, style: 'font-size:11px;color:#aeb4df;font-weight:800;flex-shrink:0;' }));
+      box.appendChild(makeKeyBadge(target, code, 'Bind movement ' + label.toLowerCase() + ' key'));
+      moveGrid.appendChild(box);
+    });
+    section.appendChild(moveGrid);
+
+    const customHeader = mkEl('div', {
+      style: 'display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:7px;'
+    });
+    customHeader.appendChild(mkEl('span', {
+      textContent: 'Avatar custom',
+      style: 'font-size:10px;color:#8f99dc;font-weight:800;text-transform:uppercase;'
+    }));
+    const customToggle = mkEl('button', {
+      className: 'aa-btn',
+      textContent: isDirectionCustomMinimized ? '+' : '-',
+      title: isDirectionCustomMinimized ? 'Show default and direction avatar settings' : 'Hide default and direction avatar settings',
+      style: 'padding:1px 7px;font-size:11px;line-height:1.2;'
+    });
+    customToggle.onclick = () => {
+      isDirectionCustomMinimized = !isDirectionCustomMinimized;
+      localStorage.setItem(DIRECTION_CUSTOM_MIN_KEY, isDirectionCustomMinimized ? 'true' : 'false');
+      render();
+    };
+    customHeader.appendChild(customToggle);
+    section.appendChild(customHeader);
+
+    if (isDirectionCustomMinimized) {
+      panel.appendChild(section);
+      return;
+    }
+
+    const defaults = mkEl('div', { style: 'display:flex;align-items:center;gap:6px;justify-content:space-between;margin-top:6px;margin-bottom:6px;' });
     defaults.appendChild(mkEl('span', { textContent: 'Default avatar', style: 'font-size:11px;color:#aeb4df;font-weight:700;' }));
     const defaultInput = mkEl('input', {
       className: 'aa-input',
@@ -834,23 +876,9 @@
     defaults.appendChild(defaultInput);
     section.appendChild(defaults);
 
-    const moveGrid = mkEl('div', { style: 'display:grid;grid-template-columns:repeat(4,minmax(86px,1fr));gap:4px;width:100%;' });
-    [
-      ['up', 'UP', upKey],
-      ['down', 'DOWN', downKey],
-      ['left', 'LEFT', leftKey],
-      ['right', 'RIGHT', rightKey]
-    ].forEach(([target, label, code]) => {
-      const box = mkEl('div', { style: 'display:flex;align-items:center;justify-content:space-between;gap:4px;background:rgba(26,26,46,.55);border:1px solid #333;border-radius:4px;padding:3px 4px;min-width:0;height:25px;' });
-      box.appendChild(mkEl('span', { textContent: label, style: 'font-size:11px;color:#aeb4df;font-weight:800;flex-shrink:0;' }));
-      box.appendChild(makeKeyBadge(target, code, 'Bind movement ' + label.toLowerCase() + ' key'));
-      moveGrid.appendChild(box);
-    });
-    section.appendChild(moveGrid);
-
     const avatarLabel = mkEl('div', {
       textContent: 'Direction avatars',
-      style: 'font-size:10px;color:#8f99dc;font-weight:800;text-transform:uppercase;margin:7px 0 4px;'
+      style: 'font-size:10px;color:#8f99dc;font-weight:800;text-transform:uppercase;margin:4px 0;'
     });
     section.appendChild(avatarLabel);
 
@@ -862,7 +890,7 @@
       box.appendChild(mkEl('span', {
         textContent: label,
         title: label,
-        style: 'font-size:10px;color:#aeb4df;font-weight:800;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+        style: 'font-size:11px;color:#aeb4df;font-weight:800;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
       }));
       const input = mkEl('input', {
         className: 'aa-input',
@@ -2313,8 +2341,6 @@
     if (rebindTarget) rebindTarget = null;
 
     const rectBefore = panel.getBoundingClientRect();
-    const centerX = rectBefore.left + rectBefore.width / 2;
-    const centerY = rectBefore.top + rectBefore.height / 2;
 
     isMinimized = !isMinimized;
     localStorage.setItem(MIN_KEY, isMinimized);
@@ -2324,10 +2350,8 @@
     panel.style.right = '';
     const nextW = panel.offsetWidth;
     const nextH = panel.offsetHeight;
-    let nextLeft = rectBefore.left;
-    let nextTop = rectBefore.top;
-    if (centerX > window.innerWidth / 2) nextLeft = rectBefore.right - nextW;
-    if (centerY > window.innerHeight / 2) nextTop = rectBefore.bottom - nextH;
+    let nextLeft = rectBefore.right - nextW;
+    let nextTop = rectBefore.bottom - nextH;
     nextLeft = Math.max(0, Math.min(window.innerWidth - nextW, nextLeft));
     nextTop = Math.max(0, Math.min(window.innerHeight - nextH, nextTop));
     panel.style.left = nextLeft + 'px';
