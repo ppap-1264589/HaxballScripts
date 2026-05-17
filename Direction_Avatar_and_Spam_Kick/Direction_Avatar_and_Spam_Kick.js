@@ -35,37 +35,79 @@
   const LEFT_KEY           = 'hax_aas_left_key';
   const RIGHT_KEY          = 'hax_aas_right_key';
   const LAST_AV_KEY        = 'hax_aas_last_known_avatar';
+  const DIRECTION_AVATAR_PREFIX = 'hax_aas_dir_avatar_';
 
-  const DEFAULT_PROFILE_BIND = 'KeyV';
-  const DEFAULT_STOP_BIND    = 'KeyT';
-  const DEFAULT_AUTO_BIND    = 'KeyG';
-  const DEFAULT_DIRECTION_BIND = 'KeyE';
+  const DEFAULT_PROFILE_BIND = 'KeyH';
+  const DEFAULT_STOP_BIND    = 'Quote';
+  const DEFAULT_AUTO_BIND    = 'KeyT';
+  const DEFAULT_DIRECTION_BIND = 'KeyW';
   const DEFAULT_SPAM_TOGGLE    = 'KeyQ';
   const DEFAULT_SPAM_ACTION    = 'KeyX';
   const DEFAULT_AVATAR_TEXT    = '😈';
-  const DEFAULT_UP_KEY         = 'KeyW';
-  const DEFAULT_DOWN_KEY       = 'KeyS';
-  const DEFAULT_LEFT_KEY       = 'KeyA';
-  const DEFAULT_RIGHT_KEY      = 'KeyD';
-  const DEFAULT_DELAY_MS     = 160;
-  const DEFAULT_SPAM_DELAY_MS = 160;
+  const DEFAULT_UP_KEY         = 'ArrowUp';
+  const DEFAULT_DOWN_KEY       = 'ArrowDown';
+  const DEFAULT_LEFT_KEY       = 'ArrowLeft';
+  const DEFAULT_RIGHT_KEY      = 'ArrowRight';
+  const DEFAULT_DELAY_MS     = 120;
+  const DEFAULT_SPAM_DELAY_MS = 80;
   const MIN_DELAY_MS         = 100;
   const MIN_SPAM_DELAY_MS    = 10;
   const MIN_COMMAND_GAP_MS   = 40;
   const DIRECTION_THROTTLE_MS = 40;
   const CHAT_FOCUS_RETRY_MS  = 120;
 
+  const DEFAULT_DIRECTION_AVATARS = {
+    up: '\u2b06',
+    down: '\u2b07',
+    left: '\u2b05',
+    right: '\u27a1',
+    'up-right': '\u2b08',
+    'up-left': '\u2b09',
+    'down-right': '\u2b0a',
+    'down-left': '\u2b0b',
+    idle: '\u2022'
+  };
+
+  const DIRECTION_AVATAR_FIELDS = [
+    ['up-left', 'UP LEFT'],
+    ['up', 'UP'],
+    ['up-right', 'UP RIGHT'],
+    ['left', 'LEFT'],
+    ['right', 'RIGHT'],
+    ['down-left', 'DOWN LEFT'],
+    ['down', 'DOWN'],
+    ['down-right', 'DOWN RIGHT']
+  ];
+
   const DEFAULT_PROFILES = {
-    Default: {
+    moon: {
       delay: DEFAULT_DELAY_MS,
-      bindCode: DEFAULT_PROFILE_BIND,
+      bindCode: 'KeyH',
       cursor: 0,
       items: [
-        { type: 'avatar', value: 'GG' },
-        { type: 'avatar', value: 'OK' },
-        { type: 'delay',  value: '500' },
-        { type: 'avatar', value: 'HI' },
-        { type: 'avatar', value: 'GL' },
+        { type: 'avatar', value: '🌑' },
+        { type: 'avatar', value: '🌒' },
+        { type: 'avatar', value: '🌓' },
+        { type: 'avatar', value: '🌔' },
+        { type: 'avatar', value: '🌕' },
+        { type: 'avatar', value: '🌖' },
+        { type: 'avatar', value: '🌗' },
+        { type: 'avatar', value: '🌘' },
+      ]
+    },
+    loading: {
+      delay: DEFAULT_DELAY_MS,
+      bindCode: 'KeyY',
+      cursor: 0,
+      items: [
+        { type: 'avatar', value: '⣾' },
+        { type: 'avatar', value: '⣽' },
+        { type: 'avatar', value: '⣻' },
+        { type: 'avatar', value: '⢿' },
+        { type: 'avatar', value: '⡿' },
+        { type: 'avatar', value: '⣟' },
+        { type: 'avatar', value: '⣯' },
+        { type: 'avatar', value: '⣷' },
       ]
     }
   };
@@ -190,6 +232,19 @@
     localStorage.setItem(key, value);
   }
 
+  function loadDirectionAvatars() {
+    const out = {};
+    for (const dir of Object.keys(DEFAULT_DIRECTION_AVATARS)) {
+      out[dir] = localStorage.getItem(DIRECTION_AVATAR_PREFIX + dir) ?? DEFAULT_DIRECTION_AVATARS[dir];
+    }
+    return out;
+  }
+
+  function saveDirectionAvatar(dir, value) {
+    directionAvatars[dir] = value;
+    localStorage.setItem(DIRECTION_AVATAR_PREFIX + dir, value);
+  }
+
   function getProfile(name = activeProfile) {
     return profiles[name];
   }
@@ -271,6 +326,7 @@
   let rightKey = loadKey(RIGHT_KEY, DEFAULT_RIGHT_KEY);
   let spamDelay = asSpamDelayMs(localStorage.getItem(SPAM_DELAY_KEY), DEFAULT_SPAM_DELAY_MS);
   let avatarMode = localStorage.getItem(AVATAR_MODE_KEY) === 'direction' ? 'direction' : 'list';
+  let directionAvatars = loadDirectionAvatars();
   let spamEnabled = false;
   let rebindTarget = null;
   let hintTimer = null;
@@ -320,6 +376,7 @@
       Space: 'Space',
       Tab: 'Tab',
       Escape: 'Esc',
+      Quote: "'",
       ArrowUp: 'Up',
       ArrowDown: 'Down',
       ArrowLeft: 'Left',
@@ -790,6 +847,39 @@
       moveGrid.appendChild(box);
     });
     section.appendChild(moveGrid);
+
+    const avatarLabel = mkEl('div', {
+      textContent: 'Direction avatars',
+      style: 'font-size:10px;color:#8f99dc;font-weight:800;text-transform:uppercase;margin:7px 0 4px;'
+    });
+    section.appendChild(avatarLabel);
+
+    const avatarGrid = mkEl('div', { style: 'display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;width:100%;' });
+    DIRECTION_AVATAR_FIELDS.forEach(([dir, label]) => {
+      const box = mkEl('div', {
+        style: 'display:flex;align-items:center;gap:3px;background:rgba(26,26,46,.55);border:1px solid #333;border-radius:4px;padding:3px;min-width:0;height:27px;'
+      });
+      box.appendChild(mkEl('span', {
+        textContent: label,
+        title: label,
+        style: 'font-size:10px;color:#aeb4df;font-weight:800;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+      }));
+      const input = mkEl('input', {
+        className: 'aa-input',
+        type: 'text',
+        value: directionAvatars[dir],
+        title: 'Avatar for ' + label.toLowerCase(),
+        style: 'width:31px;height:20px;text-align:center;font-weight:800;font-size:12px;padding:0;flex-shrink:0;'
+      });
+      input.addEventListener('keydown', e => e.stopPropagation());
+      input.addEventListener('input', () => {
+        saveDirectionAvatar(dir, input.value);
+        if (avatarMode === 'direction' && currentDirection() === dir) updateDirectionAvatar(true);
+      });
+      box.appendChild(input);
+      avatarGrid.appendChild(box);
+    });
+    section.appendChild(avatarGrid);
     panel.appendChild(section);
   }
 
@@ -1735,18 +1825,6 @@
   // ==================== GAME COMMANDS ====================
   const heldKeys = new Set();
 
-  const DIRECTION_AVATARS = {
-    up: '\u2b06',
-    down: '\u2b07',
-    left: '\u2b05',
-    right: '\u27a1',
-    'up-right': '\u2b08',
-    'up-left': '\u2b09',
-    'down-right': '\u2b0a',
-    'down-left': '\u2b0b',
-    idle: '\u2022'
-  };
-
   function getMovementKeys() {
     return new Set([
       upKey, downKey, leftKey, rightKey,
@@ -1837,7 +1915,7 @@
       if (!force && latestDirection === lastDirection) return;
       lastDirection = latestDirection;
       lastDirectionCommandAt = performance.now();
-      sendAvatarValue(DIRECTION_AVATARS[latestDirection]);
+      sendAvatarValue(directionAvatars[latestDirection]);
     };
 
     const elapsed = performance.now() - lastDirectionCommandAt;
@@ -1848,7 +1926,7 @@
       }
       lastDirection = direction;
       lastDirectionCommandAt = performance.now();
-      sendAvatarValue(DIRECTION_AVATARS[direction]);
+      sendAvatarValue(directionAvatars[direction]);
       return;
     }
 
