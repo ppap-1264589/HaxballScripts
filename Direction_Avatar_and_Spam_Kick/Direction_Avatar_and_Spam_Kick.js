@@ -337,6 +337,7 @@
   let autoProfile = null;
   let autoTimer = null;
   const manualTimers = new Map();
+  const heldProfileBindCodes = new Set();
   let lastDirection = '';
   let directionTimer = null;
   let lastDirectionCommandAt = -DIRECTION_THROTTLE_MS;
@@ -1716,6 +1717,19 @@
     runManualStep(profileName);
   }
 
+  function isManualProfileHeld(profileName) {
+    const code = getProfile(profileName)?.bindCode;
+    return !!code && code !== 'NONE' && heldProfileBindCodes.has(code);
+  }
+
+  function scheduleManualNext(profileName, wait) {
+    const timer = setTimeout(() => {
+      manualTimers.delete(profileName);
+      if (isManualProfileHeld(profileName)) runManualStep(profileName);
+    }, Math.max(0, wait));
+    manualTimers.set(profileName, timer);
+  }
+
   function runManualStep(profileName) {
     if (!scriptEnabled) {
       clearManualTimer(profileName);
@@ -1724,7 +1738,7 @@
     if (isUserTyping()) {
       const timer = setTimeout(() => {
         manualTimers.delete(profileName);
-        runManualStep(profileName);
+        if (isManualProfileHeld(profileName)) runManualStep(profileName);
       }, CHAT_FOCUS_RETRY_MS);
       manualTimers.set(profileName, timer);
       return;
@@ -1738,20 +1752,13 @@
     }
 
     if (effect.type === 'delay') {
-      const timer = setTimeout(() => {
-        manualTimers.delete(profileName);
-        runManualStep(profileName);
-      }, effect.ms);
-      manualTimers.set(profileName, timer);
+      scheduleManualNext(profileName, effect.ms);
       return;
     }
 
     sendAvatarValue(effect.value);
     const wait = waitAfterAvatar(profileName);
-    if (wait > 0) {
-      const timer = setTimeout(() => manualTimers.delete(profileName), wait);
-      manualTimers.set(profileName, timer);
-    }
+    if (wait > 0 || isManualProfileHeld(profileName)) scheduleManualNext(profileName, wait);
   }
 
   function startAuto(profileName) {
@@ -1848,6 +1855,11 @@
   function clearAllManualTimers() {
     for (const timer of manualTimers.values()) clearTimeout(timer);
     manualTimers.clear();
+  }
+
+  function releaseProfileBindKey(code) {
+    if (!code || !heldProfileBindCodes.has(code)) return;
+    heldProfileBindCodes.delete(code);
   }
 
   // ==================== GAME COMMANDS ====================
@@ -2153,6 +2165,7 @@
 
     const boundProfileName = profileNameForBind(e.code);
     if (boundProfileName) {
+      heldProfileBindCodes.add(e.code);
       triggerProfileBind(boundProfileName);
       e.preventDefault();
       return true;
@@ -2168,11 +2181,13 @@
   function onTopKeyUp(e) {
     if (!e.code) return;
     heldKeys.delete(e.code);
+    releaseProfileBindKey(e.code);
     if (e.code === spamActionCode) stopSpam();
   }
 
   function clearTransientInputState() {
     heldKeys.clear();
+    heldProfileBindCodes.clear();
     stopSpam();
     lastDirection = '';
   }
@@ -2193,6 +2208,7 @@
   function onFrameKeyUp(e) {
     if (!e.isTrusted) return;
     heldKeys.delete(e.code);
+    releaseProfileBindKey(e.code);
     if (getMovementKeys().has(e.code)) updateDirectionAvatar();
     if (e.code === spamActionCode) stopSpam();
   }
