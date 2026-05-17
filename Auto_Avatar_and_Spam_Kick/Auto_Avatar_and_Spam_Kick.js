@@ -702,7 +702,7 @@
     });
 
     if (isMinimized) {
-      Object.assign(panel.style, { padding: '6px 8px', fontSize: '11px', width: '178px' });
+      Object.assign(panel.style, { padding: '6px 8px', fontSize: '11px', width: '180px' });
       const mini = mkEl('div', {
         id: 'aa-drag-handle',
         style: 'display:flex;flex-direction:column;gap:3px;cursor:grab;touch-action:none;min-width:0;'
@@ -718,18 +718,25 @@
       toggleBtn.onclick = toggleMinimize;
       miniTop.appendChild(toggleBtn);
       mini.appendChild(miniTop);
-      mini.appendChild(mkEl('div', {
-        textContent: 'Tool: ' + (scriptEnabled ? 'RUN' : 'STOP'),
-        style: 'font-size:9px;color:' + (scriptEnabled ? '#6f6' : '#f77') + ';font-weight:800;letter-spacing:.04em;'
-      }));
-      mini.appendChild(mkEl('div', {
-        textContent: 'Avatar: ' + (avatarMode === 'direction' ? 'DIR' : (autoActive ? 'LIST AUTO' : 'LIST')),
-        style: 'font-size:9px;color:' + (avatarMode === 'direction' || autoActive ? '#6f6' : '#9de8ff') + ';font-weight:800;letter-spacing:.04em;'
-      }));
-      mini.appendChild(mkEl('div', {
-        textContent: 'Spam: ' + (spamEnabled ? 'ON' : 'OFF'),
-        style: 'font-size:9px;color:' + (spamEnabled ? '#6f6' : '#aeb4df') + ';font-weight:800;letter-spacing:.04em;'
-      }));
+      const avatarLabel = avatarMode === 'direction' ? 'DIR' : (autoActive ? 'AUTO' : 'LIST');
+      const avatarKey = avatarMode === 'direction' ? directionBindCode : autoBindCode;
+      const nextAvatarKey = getProfile()?.bindCode || 'NONE';
+      const miniInfo = mkEl('div', {
+        style: 'display:grid;grid-template-columns:max-content 1fr;column-gap:10px;row-gap:2px;width:100%;'
+      });
+      [
+        ['Tool: ' + (scriptEnabled ? 'RUN' : 'STOP') + ' (' + keyLabel(stopBindCode) + ')', scriptEnabled ? '#6f6' : '#f77'],
+        ['Avatar: ' + avatarLabel + ' (' + keyLabel(avatarKey) + ')', avatarMode === 'direction' || autoActive ? '#6f6' : '#9de8ff'],
+        ['Spam: ' + (spamEnabled ? 'ON' : 'OFF') + ' (' + keyLabel(spamToggleCode) + ')', spamEnabled ? '#6f6' : '#aeb4df'],
+        ['Next avatar: (' + keyLabel(nextAvatarKey) + ')', nextAvatarKey && nextAvatarKey !== 'NONE' ? '#9de8ff' : '#aeb4df']
+      ].forEach(([text, color], idx) => {
+        miniInfo.appendChild(mkEl('div', {
+          textContent: text,
+          title: text,
+          style: 'font-size:9px;color:' + color + ';font-weight:800;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;justify-self:' + (idx % 2 ? 'end' : 'start') + ';'
+        }));
+      });
+      mini.appendChild(miniInfo);
       panel.appendChild(mini);
       setupDrag(panel, mini);
       applyPanelPosition(panel);
