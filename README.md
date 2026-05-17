@@ -7,8 +7,9 @@ Các tool này chỉ dùng được trên máy tính, chưa có phương pháp l
 # Mô tả chức năng
 | Folder | Chức năng |
 |---|---|
-| Direction_Avatar_and_Spam_Kick | Code để đổi avatar theo hướng đi và auto spam kick |
+| Auto_Avatar_and_Spam_Kick | Code để đổi avatar theo hướng đi, đổi avatar theo khoảng thời gian, và macro spam kick |
 | Geo_Overrider | Code để đổi trường 'geo' trong localStorage của trình duyệt (đổi flag ingame) |
+| Quick_Chat | Code để vừa chơi game vừa chat nhanh nội dung vào game giống như các NPC |
 
 
 # Hướng dẫn cách dùng
@@ -38,25 +39,28 @@ Tại đây thì bạn sẽ thấy code trống trơn hết cả.
 
 ## Bước 4: Copy code ở trong folder mà bạn cần tìm
 Ví dụ: Bạn muốn có chức năng thay đổi avatar tự động và spam kick
--> Vào folder Direction_Avatar_and_Spam_Kick
+-> Vào folder Auto_Avatar_and_Spam_Kick
 
-<img width="1366" height="683" alt="ảnh 5" src="https://github.com/user-attachments/assets/82648464-4456-4c1a-b396-143ef20f0a47" />
+<img width="1307" height="661" alt="Ảnh 5" src="https://github.com/user-attachments/assets/f569af6c-7810-4b95-bb2c-019825860107" />
+
 
 Chọn file js trong folder
-<img width="1359" height="537" alt="ảnh 6" src="https://github.com/user-attachments/assets/22e5550e-afc9-4024-a93e-7b5de23822d0" />
+<img width="1079" height="447" alt="Ảnh 6" src="https://github.com/user-attachments/assets/ef0bf788-9032-4783-8185-58f5ec202c7f" />
+
 
 Nhấn nút Copy để copy tất cả mã nguồn.
-<img width="1363" height="547" alt="ảnh 7" src="https://github.com/user-attachments/assets/000f7605-b7ef-4243-a929-e9930ed88555" />
+<img width="1074" height="531" alt="Ảnh 7" src="https://github.com/user-attachments/assets/1ff0b53a-9550-4055-88fd-b87ccccc83e4" />
 
 
-## Bước 5: Paste code vào trong phần userscript của Tampermonkey đã có ở bước 3.
+## Bước 5: Paste code vào trong phần userscript của Tampermonkey.
 
 Sau đó nhấn Ctrl + S để lưu script lại
 <img width="1366" height="622" alt="ảnh 8" src="https://github.com/user-attachments/assets/e92ad62d-147f-4a71-9e48-8049a4cc4f1e" />
 
 
 Kết quả đạt được sẽ trông như thế này
-<img width="1157" height="112" alt="image" src="https://github.com/user-attachments/assets/81632afd-4683-459c-bb4b-8674f6a0a93a" />
+<img width="1366" height="213" alt="Ảnh 10" src="https://github.com/user-attachments/assets/ea3d90b5-88e1-4fcb-99f3-6af87a9c084e" />
+
 
 Đến bước này thì tức là bạn đã cài xong script mà bạn cần.
 
