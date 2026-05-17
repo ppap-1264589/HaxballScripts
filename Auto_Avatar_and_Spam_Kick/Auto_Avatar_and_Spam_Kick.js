@@ -1087,9 +1087,7 @@
 
       item.onclick = (e) => {
         if (e.target === grip) return;
-        activeProfile = name;
-        saveActiveProfile();
-        render();
+        selectProfile(name);
       };
       profileList.appendChild(item);
     });
@@ -1684,24 +1682,42 @@
     render();
   }
 
+  function switchAutoProfile(profileName) {
+    const profile = getProfile(profileName);
+    if (!profile) return false;
+
+    bumpCommandGeneration();
+    clearAllManualTimers();
+    if (autoTimer) {
+      clearTimeout(autoTimer);
+      autoTimer = null;
+    }
+    activeProfile = profileName;
+    autoProfile = profileName;
+    profile.cursor = 0;
+    saveActiveProfile();
+    render();
+    runAutoStep();
+    return true;
+  }
+
+  function selectProfile(profileName) {
+    if (!getProfile(profileName)) return;
+    if (autoActive && avatarMode === 'list') {
+      switchAutoProfile(profileName);
+      return;
+    }
+    activeProfile = profileName;
+    saveActiveProfile();
+    render();
+  }
+
   function triggerProfileBind(profileName) {
     const profile = getProfile(profileName);
     if (!profile) return false;
 
     if (autoActive && avatarMode === 'list') {
-      bumpCommandGeneration();
-      clearAllManualTimers();
-      if (autoTimer) {
-        clearTimeout(autoTimer);
-        autoTimer = null;
-      }
-      activeProfile = profileName;
-      autoProfile = profileName;
-      profile.cursor = 0;
-      saveActiveProfile();
-      render();
-      runAutoStep();
-      return true;
+      return switchAutoProfile(profileName);
     }
 
     const shouldReset = avatarMode !== 'list' || activeProfile !== profileName;
@@ -1823,7 +1839,7 @@
   }
 
   function toggleAutoForActiveProfile() {
-    if (autoActive && autoProfile === activeProfile) {
+    if (autoActive) {
       stopAuto(true);
       return;
     }
