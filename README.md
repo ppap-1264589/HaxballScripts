@@ -37,7 +37,7 @@ Tại đây thì bạn sẽ thấy code trống trơn hết cả.
 <img width="1366" height="650" alt="image" src="https://github.com/user-attachments/assets/f818ba68-5c5b-4f61-a234-5c39c1542a0c" />
 
 ## Bước 4: Copy code ở trong folder mà bạn cần tìm
-Ví dụ: Bạn muốn có chức năng thay đổi avatar theo hướng đi và spam kick
+Ví dụ: Bạn muốn có chức năng thay đổi avatar tự động và spam kick
 -> Vào folder Direction_Avatar_and_Spam_Kick
 
 <img width="1366" height="683" alt="ảnh 5" src="https://github.com/user-attachments/assets/82648464-4456-4c1a-b396-143ef20f0a47" />
