@@ -25,6 +25,7 @@
   const ENABLED_KEY        = 'hax_aas_enabled';
   const STOP_KEY           = 'hax_aas_stop_key';
   const AUTO_KEY           = 'hax_aas_list_auto_key';
+  const START_KEY          = 'hax_aas_profile_start_key';
   const DIRECTION_KEY      = 'hax_aas_direction_key';
   const AVATAR_MODE_KEY    = 'hax_aas_avatar_mode';
   const DEFAULT_AVATAR_KEY = 'hax_aas_default_avatar';
@@ -41,6 +42,7 @@
   const DEFAULT_PROFILE_BIND = 'KeyH';
   const DEFAULT_STOP_BIND    = 'Quote';
   const DEFAULT_AUTO_BIND    = 'KeyT';
+  const DEFAULT_START_BIND   = 'NONE';
   const DEFAULT_DIRECTION_BIND = 'KeyW';
   const DEFAULT_SPAM_TOGGLE    = 'KeyQ';
   const DEFAULT_SPAM_ACTION    = 'KeyX';
@@ -81,7 +83,7 @@
   ];
 
   const DEFAULT_PROFILES = {
-    moon: {
+    Moon: {
       delay: DEFAULT_DELAY_MS,
       bindCode: 'KeyH',
       cursor: 0,
@@ -96,7 +98,7 @@
         { type: 'avatar', value: '🌘' },
       ]
     },
-    loading: {
+    Loading: {
       delay: DEFAULT_DELAY_MS,
       bindCode: 'KeyY',
       cursor: 0,
@@ -133,6 +135,74 @@
     return Number.isFinite(parsed) && parsed >= MIN_DELAY_MS;
   }
 
+  function asBlockDelayMs(value, fallback = 0) {
+    const parsed = parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+  }
+
+  function isDelayInfo(value) {
+    return /^\d+ms$/i.test(String(value || '').trim());
+  }
+
+  function itemToInfo(item) {
+    if (item?.type === 'delay') return String(asBlockDelayMs(item.value, 0)) + 'ms';
+    return String(item?.value ?? '');
+  }
+
+  function infoToItem(info) {
+    const value = String(info ?? '');
+    if (isDelayInfo(value)) return { type: 'delay', value: String(asBlockDelayMs(value, 0)) };
+    return { type: 'avatar', value };
+  }
+
+  function escapeInfo(value) {
+    const raw = String(value ?? '');
+    return raw === '|' ? '||' : raw.replace(/\|/g, '');
+  }
+
+  function serializeItems(items) {
+    return (items || []).map(item => escapeInfo(itemToInfo(item)) + '|').join('');
+  }
+
+  function parseItemsText(text) {
+    const out = [];
+    let current = '';
+    const value = String(text || '');
+    for (let i = 0; i < value.length;) {
+      if (value[i] !== '|') {
+        current += value[i];
+        i++;
+        continue;
+      }
+
+      let run = 0;
+      while (value[i + run] === '|') run++;
+      const originalRun = run;
+
+      if (current) {
+        out.push(current);
+        current = '';
+        run--;
+      }
+
+      while (run >= 3) {
+        out.push('|');
+        run -= 3;
+      }
+
+      if (run === 2) {
+        current = '|';
+      } else if (run === 1) {
+        out.push(current);
+        current = '';
+      }
+
+      i += originalRun;
+    }
+    if (current) out.push(current);
+    return out.filter(info => info !== '').map(infoToItem);
+  }
+
   function asSpamDelayMs(value, fallback = DEFAULT_SPAM_DELAY_MS) {
     const parsed = parseInt(value, 10);
     return Number.isFinite(parsed) && parsed >= MIN_SPAM_DELAY_MS ? parsed : fallback;
@@ -144,18 +214,18 @@
   }
 
   function warnFastDelay() {
-    setHint('Delay qua nhanh: toi thieu 100ms.', '#f77');
+    setHint('Delay is too fast. Minimum: 100ms.', '#f77');
   }
 
   function warnFastSpamDelay() {
-    setHint('Spam rate qua nhanh: toi thieu 10ms.', '#f77');
+    setHint('Spam rate is too fast. Minimum: 10ms.', '#f77');
   }
 
   function normalizeItem(item) {
     if (typeof item === 'string') return { type: 'avatar', value: item };
     const raw = item && typeof item === 'object' ? item : {};
     if (raw.type === 'delay') {
-      return { type: 'delay', value: String(asDelayMs(raw.value ?? raw.ms, DEFAULT_DELAY_MS)) };
+      return { type: 'delay', value: String(asBlockDelayMs(raw.value ?? raw.ms, 0)) };
     }
     return { type: 'avatar', value: String(raw.value ?? '') };
   }
@@ -185,6 +255,38 @@
     } catch {
       return clone(DEFAULT_PROFILES);
     }
+  }
+
+  function migrateDefaultProfileNames(value) {
+    const out = value && typeof value === 'object' ? value : clone(DEFAULT_PROFILES);
+    let changed = false;
+    if (out.moon && !out.Moon) {
+      out.Moon = out.moon;
+      delete out.moon;
+      changed = true;
+    }
+    if (out.loading && !out.Loading) {
+      out.Loading = out.loading;
+      delete out.loading;
+      changed = true;
+    }
+    if (changed) {
+      localStorage.setItem(PROFILES_KEY, JSON.stringify(out));
+      const active = localStorage.getItem(ACTIVE_KEY);
+      if (active === 'moon') localStorage.setItem(ACTIVE_KEY, 'Moon');
+      if (active === 'loading') localStorage.setItem(ACTIVE_KEY, 'Loading');
+      try {
+        const order = JSON.parse(localStorage.getItem(ORDER_KEY) || '[]');
+        if (Array.isArray(order)) {
+          localStorage.setItem(ORDER_KEY, JSON.stringify(order.map(name => {
+            if (name === 'moon') return 'Moon';
+            if (name === 'loading') return 'Loading';
+            return name;
+          })));
+        }
+      } catch {}
+    }
+    return out;
   }
 
   function saveProfiles() {
@@ -309,7 +411,7 @@
   }
 
   // ==================== STATE ====================
-  let profiles = loadProfiles();
+  let profiles = migrateDefaultProfileNames(loadProfiles());
   let profileOrder = loadOrder(profiles);
   let activeProfile = loadActiveProfile();
 
@@ -318,6 +420,7 @@
   let scriptEnabled = localStorage.getItem(ENABLED_KEY) !== 'false';
   let stopBindCode = loadKey(STOP_KEY, DEFAULT_STOP_BIND);
   let autoBindCode = loadKey(AUTO_KEY, DEFAULT_AUTO_BIND);
+  let startBindCode = loadKey(START_KEY, DEFAULT_START_BIND);
   let directionBindCode = loadKey(DIRECTION_KEY, DEFAULT_DIRECTION_BIND);
   let spamToggleCode = loadKey(SPAM_TOGGLE_KEY, DEFAULT_SPAM_TOGGLE);
   let spamActionCode = loadKey(SPAM_ACTION_KEY, DEFAULT_SPAM_ACTION);
@@ -332,6 +435,13 @@
   let spamEnabled = false;
   let rebindTarget = null;
   let hintTimer = null;
+  let isProfilePopupOpen = false;
+  let profilePopupEl = null;
+  let popupActiveCellIdx = 0;
+  let popupFocusCellIdx = null;
+  let profilePopupStableSnapshot = null;
+  let isDirectionPopupOpen = false;
+  let directionPopupEl = null;
 
   let autoActive = false;
   let autoProfile = null;
@@ -396,6 +506,7 @@
 
     if (target !== 'stop' && stopBindCode === code) conflicts.push('STOP');
     if (target !== 'auto' && autoBindCode === code) conflicts.push('LIST AUTO');
+    if (target !== 'start' && startBindCode === code) conflicts.push('PROFILE START');
     if (target !== 'direction' && directionBindCode === code) conflicts.push('DIRECTION');
     if (target !== 'spamToggle' && spamToggleCode === code) conflicts.push('SPAM');
     if (target !== 'spamAction' && spamActionCode === code) conflicts.push('KICK');
@@ -438,6 +549,28 @@
     if (!target) return false;
     const tag = target.tagName;
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+  }
+
+  function addCommittedInputListener(input, handler) {
+    let composing = false;
+    let lastHandledValue = input.value;
+    const commit = () => {
+      const nextValue = input.value;
+      if (nextValue === lastHandledValue) return;
+      lastHandledValue = nextValue;
+      handler();
+    };
+    input.addEventListener('compositionstart', () => {
+      composing = true;
+    });
+    input.addEventListener('compositionend', () => {
+      composing = false;
+      commit();
+    });
+    input.addEventListener('input', (e) => {
+      if (composing || e.isComposing) return;
+      commit();
+    });
   }
 
   // ==================== PANEL ====================
@@ -674,6 +807,73 @@
       -webkit-appearance: none;
       margin: 0;
     }
+    .aa-popup-grid-wrap {
+      overflow: auto;
+      max-height: 356px;
+      padding-bottom: 2px;
+      scrollbar-width: thin;
+      scrollbar-color: #444 transparent;
+    }
+    .aa-popup-grid-wrap::-webkit-scrollbar { width: 4px; height: 4px; }
+    .aa-popup-grid-wrap::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+    .aa-popup-grid {
+      display: grid;
+      grid-template-columns: repeat(20, 52px);
+      grid-auto-rows: 32px;
+      gap: 4px;
+      min-width: max-content;
+    }
+    .aa-popup-cell,
+    .aa-popup-empty {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      border: 1px solid #353554;
+      border-radius: 4px;
+      background: rgba(26,26,46,.75);
+      padding: 2px;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .aa-popup-empty {
+      border-style: dashed;
+      background: rgba(26,26,46,.45);
+    }
+    .aa-popup-empty.append {
+      border-color: #44445e;
+    }
+    .aa-popup-empty.stored {
+      border-color: #7a3a4d;
+      background: rgba(58,16,32,.42);
+    }
+    .aa-popup-empty.disabled {
+      opacity: .35;
+      cursor: not-allowed;
+    }
+    .aa-popup-empty.disabled .aa-popup-input {
+      cursor: not-allowed;
+      color: #666;
+    }
+    .aa-popup-cell.delay {
+      border-color: #66512a;
+      background: rgba(42,34,26,.72);
+    }
+    .aa-popup-input {
+      width: 100%;
+      height: 26px;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 0 2px;
+      min-width: 0;
+      flex: 1;
+    }
+    .aa-popup-cell.active,
+    .aa-popup-empty.active {
+      border-color: #6a8fff;
+      background: rgba(35,45,78,.86);
+    }
     .aa-drop-placeholder {
       background: rgba(100,120,220,0.13);
       border: 1.5px dashed #6a8fff;
@@ -740,6 +940,8 @@
       panel.appendChild(mini);
       setupDrag(panel, mini);
       applyPanelPosition(panel);
+      renderProfilePopup();
+      renderDirectionPopup();
       return;
     }
 
@@ -761,6 +963,7 @@
     setupDrag(panel, header);
 
     renderGlobalControls();
+    renderDefaultAvatarControls();
     renderDirectionControls();
     renderProfiles(prevProfileScroll);
     renderActiveProfile(prevTokenScroll);
@@ -768,6 +971,8 @@
     renderHint();
 
     applyPanelPosition(panel);
+    renderProfilePopup();
+    renderDirectionPopup();
   }
 
   function renderGlobalControls() {
@@ -805,6 +1010,30 @@
     panel.appendChild(row);
   }
 
+  function renderDefaultAvatarControls() {
+    const section = mkEl('div', { className: 'aa-section' });
+    const row = mkEl('div', {
+      style: 'display:flex;align-items:center;gap:6px;justify-content:space-between;'
+    });
+    row.appendChild(mkEl('span', { className: 'aa-label', textContent: 'Default Avatar' }));
+    const defaultInput = mkEl('input', {
+      className: 'aa-input',
+      type: 'text',
+      value: defaultAvatarText,
+      maxLength: 2,
+      title: 'Avatar to restore when avatar modes are turned off',
+      style: 'width:50px;height:24px;text-align:center;font-weight:800;font-size:13px;'
+    });
+    defaultInput.addEventListener('keydown', e => e.stopPropagation());
+    addCommittedInputListener(defaultInput, () => {
+      defaultAvatarText = defaultInput.value;
+      localStorage.setItem(DEFAULT_AVATAR_KEY, defaultAvatarText);
+    });
+    row.appendChild(defaultInput);
+    section.appendChild(row);
+    panel.appendChild(section);
+  }
+
   function renderDirectionControls() {
     const section = mkEl('div', { className: 'aa-section' });
 
@@ -823,77 +1052,67 @@
     const right = mkEl('div', { style: 'display:flex;align-items:center;gap:4px;flex-shrink:0;' });
     right.appendChild(mkEl('span', { textContent: 'DIR', style: 'font-size:9px;color:#8f99dc;font-weight:800;' }));
     right.appendChild(makeKeyBadge('direction', directionBindCode, 'Bind direction avatar key'));
+    const openBtn = mkEl('button', { className: 'aa-btn', textContent: 'Open', title: 'Open direction key/avatar editor' });
+    openBtn.onclick = () => {
+      isDirectionPopupOpen = true;
+      renderDirectionPopup();
+    };
+    right.appendChild(openBtn);
     top.appendChild(right);
     section.appendChild(top);
+    panel.appendChild(section);
+  }
 
-    const moveGrid = mkEl('div', { style: 'display:grid;grid-template-columns:repeat(4,minmax(86px,1fr));gap:4px;width:100%;' });
+  function renderDirectionPopup() {
+    if (directionPopupEl) {
+      directionPopupEl.remove();
+      directionPopupEl = null;
+    }
+    if (!isDirectionPopupOpen) return;
+
+    const overlay = mkEl('div', {
+      style: 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;padding:16px;'
+    });
+    const popup = mkEl('div', {
+      style: 'width:min(720px,96vw);max-height:90vh;overflow:auto;background:rgba(14,14,28,.96);border:1px solid #383860;border-radius:8px;color:#ddd;font-family:monospace,sans-serif;padding:10px 12px;'
+    });
+    overlay.appendChild(popup);
+
+    const header = mkEl('div', {
+      style: 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;border-bottom:1px solid #2a2a3e;padding-bottom:7px;'
+    });
+    header.appendChild(mkEl('span', { className: 'aa-panel-title', textContent: 'DIRECTION EDITOR' }));
+    const closeBtn = mkEl('button', { className: 'aa-btn', textContent: 'Close', title: 'Close direction editor' });
+    closeBtn.onclick = () => {
+      isDirectionPopupOpen = false;
+      renderDirectionPopup();
+    };
+    header.appendChild(closeBtn);
+    popup.appendChild(header);
+
+    popup.appendChild(mkEl('div', { className: 'aa-label', textContent: 'Movement keys', style: 'margin-bottom:5px;' }));
+    const moveGrid = mkEl('div', { style: 'display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:6px;width:100%;margin-bottom:10px;' });
     [
       ['up', 'UP', upKey],
       ['down', 'DOWN', downKey],
       ['left', 'LEFT', leftKey],
       ['right', 'RIGHT', rightKey]
     ].forEach(([target, label, code]) => {
-      const box = mkEl('div', { style: 'display:flex;align-items:center;justify-content:space-between;gap:4px;background:rgba(26,26,46,.55);border:1px solid #333;border-radius:4px;padding:3px 4px;min-width:0;height:25px;' });
+      const box = mkEl('div', { style: 'display:flex;align-items:center;justify-content:space-between;gap:6px;background:rgba(26,26,46,.55);border:1px solid #333;border-radius:4px;padding:4px;min-width:0;height:31px;' });
       box.appendChild(mkEl('span', { textContent: label, style: 'font-size:11px;color:#aeb4df;font-weight:800;flex-shrink:0;' }));
-      box.appendChild(makeKeyBadge(target, code, 'Bind movement ' + label.toLowerCase() + ' key'));
+      const badge = makeKeyBadge(target, code, 'Bind movement ' + label.toLowerCase() + ' key');
+      badge.style.width = '58px';
+      badge.style.minWidth = '58px';
+      box.appendChild(badge);
       moveGrid.appendChild(box);
     });
-    section.appendChild(moveGrid);
+    popup.appendChild(moveGrid);
 
-    const customHeader = mkEl('div', {
-      style: 'display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:7px;'
-    });
-    customHeader.appendChild(mkEl('span', {
-      textContent: 'Avatar custom',
-      style: 'font-size:10px;color:#8f99dc;font-weight:800;text-transform:uppercase;'
-    }));
-    const customToggle = mkEl('button', {
-      className: 'aa-btn',
-      textContent: isDirectionCustomMinimized ? '+' : '-',
-      title: isDirectionCustomMinimized ? 'Show default and direction avatar settings' : 'Hide default and direction avatar settings',
-      style: 'padding:1px 7px;font-size:11px;line-height:1.2;'
-    });
-    customToggle.onclick = () => {
-      isDirectionCustomMinimized = !isDirectionCustomMinimized;
-      localStorage.setItem(DIRECTION_CUSTOM_MIN_KEY, isDirectionCustomMinimized ? 'true' : 'false');
-      render();
-    };
-    customHeader.appendChild(customToggle);
-    section.appendChild(customHeader);
-
-    if (isDirectionCustomMinimized) {
-      panel.appendChild(section);
-      return;
-    }
-
-    const defaults = mkEl('div', { style: 'display:flex;align-items:center;gap:6px;justify-content:space-between;margin-top:6px;margin-bottom:6px;' });
-    defaults.appendChild(mkEl('span', { textContent: 'Default avatar', style: 'font-size:11px;color:#aeb4df;font-weight:700;' }));
-    const defaultInput = mkEl('input', {
-      className: 'aa-input',
-      type: 'text',
-      value: defaultAvatarText,
-      maxLength: 2,
-      title: 'Avatar to restore when direction mode is turned off',
-      style: 'width:42px;height:23px;text-align:center;font-weight:700;'
-    });
-    defaultInput.addEventListener('keydown', e => e.stopPropagation());
-    defaultInput.addEventListener('input', () => {
-      defaultAvatarText = defaultInput.value;
-      localStorage.setItem(DEFAULT_AVATAR_KEY, defaultAvatarText);
-    });
-    defaults.appendChild(defaultInput);
-    section.appendChild(defaults);
-
-    const avatarLabel = mkEl('div', {
-      textContent: 'Direction avatars',
-      style: 'font-size:10px;color:#8f99dc;font-weight:800;text-transform:uppercase;margin:4px 0;'
-    });
-    section.appendChild(avatarLabel);
-
-    const avatarGrid = mkEl('div', { style: 'display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;width:100%;' });
+    popup.appendChild(mkEl('div', { className: 'aa-label', textContent: 'Direction avatars', style: 'margin-bottom:5px;' }));
+    const avatarGrid = mkEl('div', { style: 'display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;width:100%;' });
     DIRECTION_AVATAR_FIELDS.forEach(([dir, label]) => {
       const box = mkEl('div', {
-        style: 'display:flex;align-items:center;gap:3px;background:rgba(26,26,46,.55);border:1px solid #333;border-radius:4px;padding:3px;min-width:0;height:27px;'
+        style: 'display:flex;align-items:center;gap:4px;background:rgba(26,26,46,.55);border:1px solid #333;border-radius:4px;padding:4px;min-width:0;height:29px;'
       });
       box.appendChild(mkEl('span', {
         textContent: label,
@@ -905,18 +1124,20 @@
         type: 'text',
         value: directionAvatars[dir],
         title: 'Avatar for ' + label.toLowerCase(),
-        style: 'width:31px;height:20px;text-align:center;font-weight:800;font-size:12px;padding:0;flex-shrink:0;'
+        style: 'width:50px;height:23px;text-align:center;font-weight:800;font-size:13px;padding:0;flex-shrink:0;'
       });
       input.addEventListener('keydown', e => e.stopPropagation());
-      input.addEventListener('input', () => {
+      addCommittedInputListener(input, () => {
         saveDirectionAvatar(dir, input.value);
         if (avatarMode === 'direction' && currentDirection() === dir) updateDirectionAvatar(true);
       });
       box.appendChild(input);
       avatarGrid.appendChild(box);
     });
-    section.appendChild(avatarGrid);
-    panel.appendChild(section);
+    popup.appendChild(avatarGrid);
+
+    directionPopupEl = overlay;
+    document.body.appendChild(overlay);
   }
 
   function renderSpamControls() {
@@ -1101,21 +1322,25 @@
     const profile = getProfile();
     if (!profile) return;
 
-    const controlRow = mkEl('div', {
+    const section = mkEl('div', {
       className: 'aa-section',
+      style: 'display:flex;flex-direction:column;gap:6px;'
+    });
+
+    const firstRow = mkEl('div', {
       style: 'display:flex;align-items:center;gap:6px;justify-content:space-between;'
     });
-    controlRow.appendChild(mkEl('span', { className: 'aa-label', textContent: 'Profile' }));
+    firstRow.appendChild(mkEl('span', { className: 'aa-label', textContent: 'Profile' }));
 
-    const controlRight = mkEl('div', { style: 'display:flex;align-items:center;gap:5px;' });
-    controlRight.appendChild(makeKeyBadge('profile', profile.bindCode, 'Bind manual avatar key'));
+    const firstRight = mkEl('div', { style: 'display:flex;align-items:center;gap:5px;' });
+    firstRight.appendChild(makeKeyBadge('profile', profile.bindCode, 'Bind manual avatar key'));
 
     const delayLabel = mkEl('span', {
       className: 'aa-delay-label',
       textContent: 'Delay',
       style: 'font-size:10px;color:#aeb4df;font-weight:700;text-transform:uppercase;'
     });
-    controlRight.appendChild(delayLabel);
+    firstRight.appendChild(delayLabel);
 
     const delayInput = mkEl('input', {
       className: 'aa-input',
@@ -1138,65 +1363,413 @@
       profile.delay = asDelayMs(delayInput.value, profile.delay || DEFAULT_DELAY_MS);
       saveProfiles();
     });
-    controlRight.appendChild(delayInput);
+    firstRight.appendChild(delayInput);
 
-    controlRow.appendChild(controlRight);
-    panel.appendChild(controlRow);
-
-    const seqHeader = mkEl('div', {
-      style: 'display:flex;align-items:center;justify-content:space-between;margin:7px 0 5px;'
+    const openBtn = mkEl('button', {
+      className: 'aa-btn',
+      textContent: 'Open',
+      title: 'Open profile avatar editor'
     });
-    seqHeader.appendChild(mkEl('span', { className: 'aa-label', textContent: 'Avatar List' }));
-
-    const actions = mkEl('div', { style: 'display:flex;align-items:center;gap:4px;' });
-    const addAvatarBtn = mkEl('button', { className: 'aa-btn', textContent: '+ AV', title: 'Add avatar cell' });
-    addAvatarBtn.onclick = () => {
-      profile.items.push({ type: 'avatar', value: '' });
-      saveProfiles();
-      render();
-      scrollTokensToEnd();
+    openBtn.onclick = () => {
+      rememberStableProfile(activeProfile);
+      isProfilePopupOpen = true;
+      renderProfilePopup(true);
     };
-    actions.appendChild(addAvatarBtn);
+    firstRight.appendChild(openBtn);
 
-    const addDelayBtn = mkEl('button', { className: 'aa-btn warn', textContent: '+ MS', title: 'Add delay block' });
-    addDelayBtn.onclick = () => {
-      profile.items.push({ type: 'delay', value: String(getProfileDelay()) });
-      saveProfiles();
-      render();
-      scrollTokensToEnd();
+    firstRow.appendChild(firstRight);
+    section.appendChild(firstRow);
+
+    const secondRow = mkEl('div', {
+      style: 'display:flex;align-items:center;justify-content:space-between;gap:6px;'
+    });
+    secondRow.appendChild(mkEl('span', {
+      textContent: 'Sequence',
+      style: 'font-size:10px;color:#8f99dc;font-weight:800;text-transform:uppercase;'
+    }));
+    const secondRight = mkEl('div', { style: 'display:flex;align-items:center;gap:5px;' });
+    const startBtn = mkEl('button', {
+      className: 'aa-btn',
+      textContent: 'Start',
+      title: 'Set the active profile sequence back to the first cell'
+    });
+    startBtn.onclick = startActiveProfileSequence;
+    secondRight.appendChild(startBtn);
+    secondRight.appendChild(mkEl('span', {
+      textContent: 'START',
+      style: 'font-size:9px;color:#8f99dc;font-weight:800;'
+    }));
+    secondRight.appendChild(makeKeyBadge('start', startBindCode, 'Bind key to reset the active profile sequence'));
+    secondRow.appendChild(secondRight);
+    section.appendChild(secondRow);
+
+    panel.appendChild(section);
+  }
+
+  function popupCellValue(item) {
+    if (!item) return '';
+    return item.type === 'delay' ? String(asBlockDelayMs(item.value, 0)) + 'ms' : String(item.value ?? '');
+  }
+
+  function isBlankProfileItem(item) {
+    return !popupCellValue(item).trim();
+  }
+
+  function blankProfileCellCount(profile) {
+    return profile?.items?.filter(isBlankProfileItem).length || 0;
+  }
+
+  function rememberStableProfile(profileName = activeProfile) {
+    const profile = getProfile(profileName);
+    if (!profile) return false;
+    if (blankProfileCellCount(profile)) return false;
+    profilePopupStableSnapshot = {
+      name: profileName,
+      cursor: asNonNegativeInt(profile.cursor, 0),
+      items: clone(profile.items)
     };
-    actions.appendChild(addDelayBtn);
+    return true;
+  }
 
-    const resetBtn = mkEl('button', { className: 'aa-btn', textContent: 'Reset', title: 'Reset next avatar to the first cell' });
-    resetBtn.onclick = () => {
+  function restoreStableProfileSnapshot(profileName = activeProfile) {
+    const snapshot = profilePopupStableSnapshot;
+    const profile = snapshot && snapshot.name === profileName ? getProfile(profileName) : null;
+    if (!profile) return false;
+    profile.items = clone(snapshot.items);
+    profile.cursor = Math.min(snapshot.cursor, Math.max(0, profile.items.length - 1));
+    saveProfiles();
+    return true;
+  }
+
+  function closeProfilePopup(cancelBlankCells = false) {
+    const profile = getProfile();
+    let restored = false;
+    const hadBlankCells = !!(cancelBlankCells && profile && blankProfileCellCount(profile));
+    if (hadBlankCells) {
+      restored = restoreStableProfileSnapshot(activeProfile);
+      if (!restored) {
+        profile.items = profile.items.filter(item => !isBlankProfileItem(item));
+        if (profile.cursor >= profile.items.length) profile.cursor = 0;
+        saveProfiles();
+      }
+    } else if (profile && !blankProfileCellCount(profile)) {
+      rememberStableProfile(activeProfile);
+    }
+    isProfilePopupOpen = false;
+    popupFocusCellIdx = null;
+    render();
+    if (hadBlankCells) {
+      setHint(restored ? 'Blank cells were canceled.' : 'Blank cells were removed.', '#f0c060');
+    }
+  }
+
+  function popupGridSize(itemCount) {
+    const wantedRows = Math.max(5, Math.ceil(Math.max(itemCount + 1, 1) / 20));
+    const rows = Math.min(10, wantedRows);
+    return rows * 20;
+  }
+
+  function updatePopupInputState(input, cell) {
+    const isDelay = isDelayInfo(input.value.trim());
+    cell.classList.toggle('delay', isDelay);
+  }
+
+  function renderProfilePopup(resetText = false) {
+    if (profilePopupEl) {
+      profilePopupEl.remove();
+      profilePopupEl = null;
+    }
+    if (!isProfilePopupOpen) return;
+    if (resetText) rememberStableProfile(activeProfile);
+
+    const profile = getProfile();
+    if (!profile) return;
+    if (profile.cursor >= profile.items.length) profile.cursor = 0;
+
+    const overlay = mkEl('div', {
+      style: 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;padding:16px;'
+    });
+    const popup = mkEl('div', {
+      style: 'width:min(1180px,98vw);max-height:92vh;overflow:auto;background:rgba(14,14,28,.96);border:1px solid #383860;border-radius:8px;color:#ddd;font-family:monospace,sans-serif;padding:10px 12px;'
+    });
+    overlay.appendChild(popup);
+
+    const header = mkEl('div', {
+      style: 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;border-bottom:1px solid #2a2a3e;padding-bottom:7px;'
+    });
+    header.appendChild(mkEl('span', {
+      className: 'aa-panel-title',
+      textContent: 'PROFILE EDITOR - ' + activeProfile
+    }));
+    const closeBtn = mkEl('button', { className: 'aa-btn', textContent: 'Close', title: 'Close profile editor' });
+    closeBtn.onclick = () => {
+      closeProfilePopup(true);
+    };
+    header.appendChild(closeBtn);
+    popup.appendChild(header);
+
+    const gridHeader = mkEl('div', {
+      style: 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;'
+    });
+    gridHeader.appendChild(mkEl('span', {
+      className: 'aa-label',
+      textContent: 'Avatar Grid 20x5 - max 20x10'
+    }));
+    const popupHint = mkEl('span', { textContent: '', style: 'font-size:10px;color:#6f6;font-weight:800;min-width:190px;text-align:right;' });
+    gridHeader.appendChild(popupHint);
+    popup.appendChild(gridHeader);
+
+    const gridWrap = mkEl('div', { className: 'aa-popup-grid-wrap' });
+    const grid = mkEl('div', { className: 'aa-popup-grid' });
+    const visibleCells = popupGridSize(profile.items.length);
+    const maxSelectableIdx = Math.max(0, Math.min(
+      visibleCells - 1,
+      profile.items.length < 200 ? profile.items.length : profile.items.length - 1
+    ));
+    popupActiveCellIdx = Math.max(0, Math.min(popupActiveCellIdx, maxSelectableIdx));
+    let selectedLabel = null;
+    let deleteCellBtn = null;
+    let insertCellBtn = null;
+    let textArea = null;
+    let textStatus = null;
+    const blankTextMessage = 'Cannot export profile text because one or more cells are empty.';
+    const warnBlankCells = () => {
+      const blanks = blankProfileCellCount(profile);
+      if (!blanks) return false;
+      popupHint.textContent = blankTextMessage + ' (' + blanks + ')';
+      popupHint.style.color = '#f77';
+      return true;
+    };
+    const syncTextArea = () => {
+      if (!textArea) textArea = overlay.querySelector('#aa-profile-text');
+      const blanks = blankProfileCellCount(profile);
+      if (blanks) {
+        if (textArea) {
+          textArea.value = '';
+          textArea.placeholder = blankTextMessage;
+          textArea.classList.add('invalid');
+        }
+        if (textStatus) {
+          textStatus.textContent = blankTextMessage + ' (' + blanks + ')';
+          textStatus.style.color = '#f77';
+        }
+        return false;
+      }
+      if (textArea) {
+        textArea.classList.remove('invalid');
+        textArea.placeholder = 'Format: info|info|. Empty inserted cells must be filled or deleted first.';
+        textArea.value = serializeItems(profile.items);
+      }
+      if (textStatus) textStatus.textContent = '';
+      return true;
+    };
+    const refreshActiveCell = () => {
+      grid.querySelectorAll('.aa-popup-cell, .aa-popup-empty').forEach(cell => {
+        cell.classList.toggle('active', Number(cell.dataset.idx) === popupActiveCellIdx);
+      });
+      if (selectedLabel) selectedLabel.textContent = 'Cell ' + (popupActiveCellIdx + 1);
+      if (deleteCellBtn) deleteCellBtn.disabled = popupActiveCellIdx < 0 || popupActiveCellIdx >= profile.items.length;
+      if (insertCellBtn) insertCellBtn.disabled = profile.items.length >= 200;
+    };
+    const setActiveCell = (idx) => {
+      popupActiveCellIdx = Math.max(0, Math.min(idx, maxSelectableIdx));
+      refreshActiveCell();
+    };
+    for (let idx = 0; idx < visibleCells; idx++) {
+      const itemIdx = idx;
+      const item = itemIdx < profile.items.length ? profile.items[itemIdx] : null;
+      const cellValue = popupCellValue(item);
+      const isStoredCell = itemIdx < profile.items.length;
+      const isContentCell = isStoredCell && !!cellValue.trim();
+      const isAppendCell = idx === profile.items.length && profile.items.length < 200;
+      const isEditableCell = isStoredCell || isAppendCell;
+      const emptyClasses = [
+        'aa-popup-empty',
+        isStoredCell ? 'stored' : '',
+        isAppendCell ? 'append' : '',
+        !isEditableCell ? 'disabled' : ''
+      ].filter(Boolean).join(' ');
+      const cell = mkEl('div', {
+        className: isContentCell ? 'aa-popup-cell' : emptyClasses
+      });
+      cell.dataset.idx = String(idx);
+      if (isStoredCell) cell.dataset.itemIdx = String(itemIdx);
+      cell.addEventListener('mousedown', () => {
+        if (isEditableCell) setActiveCell(idx);
+      });
+      if (isContentCell) {
+        cell.appendChild(mkEl('span', { className: 'aa-drag-grip', textContent: '', title: 'Drag to reorder' }));
+      }
+      const input = mkEl('input', {
+        className: 'aa-input aa-popup-input',
+        type: 'text',
+        value: cellValue,
+        disabled: !isEditableCell,
+        placeholder: isAppendCell ? '+' : '',
+        title: isEditableCell
+          ? 'Cell ' + (idx + 1) + ': avatar text or delay like 100ms'
+          : 'Insert or fill the next cell first',
+      });
+      input.dataset.gridIdx = String(idx);
+      input.addEventListener('keydown', e => e.stopPropagation());
+      input.addEventListener('focus', () => {
+        if (isEditableCell) setActiveCell(idx);
+      });
+      addCommittedInputListener(input, () => {
+        if (!isEditableCell) return;
+        const value = input.value.trim();
+        const hasValue = !!value;
+        updatePopupInputState(input, cell);
+        if (isStoredCell) {
+          if (!hasValue) {
+            profile.items[itemIdx] = { type: 'avatar', value: '' };
+            if (profile.cursor >= profile.items.length) profile.cursor = 0;
+            popupActiveCellIdx = Math.max(0, Math.min(itemIdx, profile.items.length < 200 ? profile.items.length : profile.items.length - 1));
+            popupFocusCellIdx = popupActiveCellIdx;
+            saveProfiles();
+            syncTextArea();
+            renderProfilePopup();
+            return;
+          }
+          profile.items[itemIdx] = infoToItem(value);
+          saveProfiles();
+          rememberStableProfile(activeProfile);
+          if (!isContentCell) {
+            popupActiveCellIdx = itemIdx;
+            popupFocusCellIdx = itemIdx;
+            renderProfilePopup();
+          }
+          return;
+        }
+        if (isAppendCell && hasValue) {
+          profile.items.push(infoToItem(value));
+          popupActiveCellIdx = Math.max(0, profile.items.length - 1);
+          popupFocusCellIdx = popupActiveCellIdx;
+          saveProfiles();
+          rememberStableProfile(activeProfile);
+          renderProfilePopup();
+        }
+      });
+      cell.appendChild(input);
+      updatePopupInputState(input, cell);
+      grid.appendChild(cell);
+    }
+    refreshActiveCell();
+    setupDragList(grid, '.aa-popup-cell, .aa-popup-empty.stored', (fromIdx, toIdx) => {
+      const moved = profile.items.splice(fromIdx, 1)[0];
+      profile.items.splice(toIdx, 0, moved);
+      profile.cursor = Math.min(profile.cursor, Math.max(0, profile.items.length - 1));
+      popupActiveCellIdx = Math.max(0, Math.min(toIdx, profile.items.length - 1));
+      saveProfiles();
+      rememberStableProfile(activeProfile);
+      renderProfilePopup();
+    }, 'grid');
+    gridWrap.appendChild(grid);
+    popup.appendChild(gridWrap);
+
+    const textHeader = mkEl('div', {
+      style: 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin:9px 0 5px;'
+    });
+    textHeader.appendChild(mkEl('span', {
+      className: 'aa-label',
+      textContent: 'Text Import / Export'
+    }));
+    const textTools = mkEl('div', { style: 'display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:flex-end;' });
+    selectedLabel = mkEl('span', {
+      textContent: 'Cell ' + (popupActiveCellIdx + 1),
+      style: 'font-size:10px;color:#8f99dc;font-weight:800;margin-right:3px;'
+    });
+    insertCellBtn = mkEl('button', { className: 'aa-btn', textContent: 'Insert', title: 'Insert empty cell before selected cell' });
+    deleteCellBtn = mkEl('button', { className: 'aa-btn danger', textContent: 'Delete', title: 'Delete selected cell' });
+    const exportBtn = mkEl('button', { className: 'aa-btn', textContent: 'Export', title: 'Export current profile as share text' });
+    const importBtn = mkEl('button', { className: 'aa-btn warn', textContent: 'Import', title: 'Import text and overwrite current profile' });
+    textTools.appendChild(selectedLabel);
+    textTools.appendChild(insertCellBtn);
+    textTools.appendChild(deleteCellBtn);
+    textTools.appendChild(exportBtn);
+    textTools.appendChild(importBtn);
+    textHeader.appendChild(textTools);
+    popup.appendChild(textHeader);
+
+    textStatus = mkEl('div', {
+      style: 'min-height:13px;font-size:10px;color:#f77;font-weight:800;margin:-2px 0 4px;'
+    });
+    popup.appendChild(textStatus);
+
+    textArea = mkEl('textarea', {
+      id: 'aa-profile-text',
+      className: 'aa-input',
+      value: '',
+      spellcheck: false,
+      title: 'Format: info|info|. Use || to escape a literal | inside one cell.',
+      style: 'width:100%;min-height:82px;resize:vertical;padding:6px;font-size:12px;line-height:1.35;'
+    });
+    textArea.addEventListener('keydown', e => e.stopPropagation());
+    popup.appendChild(textArea);
+
+    insertCellBtn.onclick = () => {
+      if (profile.items.length >= 200) {
+        popupHint.textContent = 'Grid limit: 20x10 cells';
+        popupHint.style.color = '#f77';
+        return;
+      }
+      const insertAt = Math.min(popupActiveCellIdx, profile.items.length);
+      profile.items.splice(insertAt, 0, { type: 'avatar', value: '' });
+      if (profile.cursor >= insertAt) profile.cursor++;
+      popupActiveCellIdx = insertAt;
+      popupFocusCellIdx = insertAt;
+      saveProfiles();
+      renderProfilePopup();
+    };
+    deleteCellBtn.onclick = () => {
+      const deleteAt = popupActiveCellIdx;
+      if (deleteAt < 0 || deleteAt >= profile.items.length) return;
+      profile.items.splice(deleteAt, 1);
+      if (profile.cursor > deleteAt) profile.cursor--;
+      if (profile.cursor >= profile.items.length) profile.cursor = 0;
+      popupActiveCellIdx = Math.max(0, Math.min(deleteAt, profile.items.length < 200 ? profile.items.length : profile.items.length - 1));
+      saveProfiles();
+      rememberStableProfile(activeProfile);
+      renderProfilePopup();
+    };
+    refreshActiveCell();
+    syncTextArea();
+
+    exportBtn.onclick = () => {
+      if (!syncTextArea()) {
+        warnBlankCells();
+        return;
+      }
+      textArea.focus();
+      textArea.select();
+    };
+    importBtn.onclick = () => {
+      const raw = textArea.value;
+      if (raw.trim() && !raw.endsWith('|')) {
+        alert('Import text must end with |.');
+        return;
+      }
+      if (!confirm('Overwrite the current profile?')) return;
+      profile.items = parseItemsText(raw);
       profile.cursor = 0;
       saveProfiles();
-      setHint('Next avatar reset.', '#6f6');
+      rememberStableProfile(activeProfile);
+      render();
+      setHint('Profile imported.', '#6f6');
     };
-    actions.appendChild(resetBtn);
 
-    seqHeader.appendChild(actions);
-    panel.appendChild(seqHeader);
-
-    const scrollBox = mkEl('div', { className: 'aa-token-scroll' });
-    const grid = mkEl('div', { className: 'aa-token-grid' });
-
-    profile.items.forEach((item, idx) => {
-      grid.appendChild(renderTokenCell(profile, item, idx));
-    });
-
-    if (profile.items.length === 0) {
-      const empty = mkEl('div', {
-        style: 'grid-column:1/-1;font-size:11px;color:#555;text-align:center;padding:10px 0;border:1px dashed #333;border-radius:5px;',
-        textContent: 'No cells yet. Add AV or MS blocks.'
-      });
-      grid.appendChild(empty);
+    profilePopupEl = overlay;
+    document.body.appendChild(overlay);
+    if (popupFocusCellIdx !== null) {
+      const focusIdx = popupFocusCellIdx;
+      popupFocusCellIdx = null;
+      setTimeout(() => {
+        const input = profilePopupEl?.querySelector(`input[data-grid-idx="${focusIdx}"]`);
+        if (input) {
+          input.focus();
+        }
+      }, 0);
     }
-
-    setupTokenDrag(grid);
-    scrollBox.appendChild(grid);
-    panel.appendChild(scrollBox);
-    scrollBox.scrollTop = prevTokenScroll;
   }
 
   function renderTokenCell(profile, item, idx) {
@@ -1242,7 +1815,7 @@
       title: isDelay ? 'Delay block in milliseconds. Minimum: 100ms.' : 'Avatar: one icon or up to two letters'
     });
     input.addEventListener('keydown', e => e.stopPropagation());
-    input.addEventListener('input', () => {
+    const commitTokenInput = () => {
       if (isDelay && !isValidDelayMs(input.value)) {
         input.classList.add('invalid');
         typeBtn.classList.add('invalid');
@@ -1255,7 +1828,12 @@
       cell.classList.remove('invalid');
       item.value = isDelay ? String(asDelayMs(input.value, item.value || getProfileDelay())) : input.value;
       saveProfiles();
-    });
+    };
+    if (isDelay) {
+      input.addEventListener('input', commitTokenInput);
+    } else {
+      addCommittedInputListener(input, commitTokenInput);
+    }
     cell.appendChild(input);
 
     return cell;
@@ -1516,6 +2094,9 @@
     } else if (target === 'auto') {
       autoBindCode = 'NONE';
       saveKey(AUTO_KEY, autoBindCode);
+    } else if (target === 'start') {
+      startBindCode = 'NONE';
+      saveKey(START_KEY, startBindCode);
     } else if (target === 'direction') {
       directionBindCode = 'NONE';
       saveKey(DIRECTION_KEY, directionBindCode);
@@ -1552,7 +2133,7 @@
       const conflicts = bindConflicts(target, code, activeProfile);
       if (conflicts.length) {
         render();
-        setHint('Key ' + keyLabel(code) + ' bi trung voi ' + conflicts.join(', ') + '.', '#f77');
+        setHint('Key ' + keyLabel(code) + ' conflicts with ' + conflicts.join(', ') + '.', '#f77');
         return;
       }
       if (target === 'profile') {
@@ -1564,6 +2145,9 @@
       } else if (target === 'auto') {
         autoBindCode = code;
         saveKey(AUTO_KEY, code);
+      } else if (target === 'start') {
+        startBindCode = code;
+        saveKey(START_KEY, code);
       } else if (target === 'direction') {
         directionBindCode = code;
         saveKey(DIRECTION_KEY, code);
@@ -1611,7 +2195,7 @@
       profile.cursor = (idx + 1) % len;
 
       if (item.type === 'delay') {
-        return { type: 'delay', ms: asDelayMs(item.value, getProfileDelay(profileName)) };
+        return { type: 'delay', ms: asBlockDelayMs(item.value, 0) };
       }
 
       const value = String(item.value || '').trim();
@@ -1680,6 +2264,15 @@
     }
     setAvatarMode(avatarMode === 'direction' ? 'list' : 'direction', true);
     render();
+  }
+
+  function startActiveProfileSequence() {
+    const profile = getProfile(activeProfile);
+    if (!profile) return false;
+    profile.cursor = 0;
+    saveProfiles();
+    setHint('Profile sequence set to the first cell.', '#6f6');
+    return true;
   }
 
   function switchAutoProfile(profileName) {
@@ -2148,8 +2741,10 @@
   // ==================== KEY HANDLERS ====================
   function handleKeyDown(e) {
     if (!e.isTrusted) return false;
+    if (e.isComposing || e.key === 'Process') return false;
 
     if (rebindTarget) {
+      if (isTextTarget(e.target)) return false;
       if (isModifierHeld(e)) return false;
       e.preventDefault();
       e.stopPropagation();
@@ -2170,6 +2765,12 @@
 
     if (autoBindCode && autoBindCode !== 'NONE' && e.code === autoBindCode) {
       toggleAutoForActiveProfile();
+      e.preventDefault();
+      return true;
+    }
+
+    if (startBindCode && startBindCode !== 'NONE' && e.code === startBindCode) {
+      startActiveProfileSequence();
       e.preventDefault();
       return true;
     }
