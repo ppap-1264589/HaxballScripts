@@ -7,6 +7,8 @@
 // @match        *://*.haxball.com/*
 // @grant        unsafeWindow
 // @run-at       document-idle
+// @updateURL    https://raw.githubusercontent.com/ppap-1264589/HaxballScripts/refs/heads/main/Auto_Avatar_and_Spam_Kick/Auto_Avatar_and_Spam_Kick.js
+// @downloadURL  https://raw.githubusercontent.com/ppap-1264589/HaxballScripts/refs/heads/main/Auto_Avatar_and_Spam_Kick/Auto_Avatar_and_Spam_Kick.js
 // @noframes
 // ==/UserScript==
 
@@ -58,9 +60,9 @@
   const MIN_COMMAND_GAP_MS   = 40;
   const DIRECTION_THROTTLE_MS = 40;
   const CHAT_FOCUS_RETRY_MS  = 120;
-  const PROFILE_POPUP_UNDO_LIMIT = 100;
-  const PROFILE_ORDER_UNDO_LIMIT = 100;
-  const DIRECTION_POPUP_UNDO_LIMIT = 100;
+  const PROFILE_POPUP_UNDO_LIMIT = 40;
+  const PROFILE_ORDER_UNDO_LIMIT = 20;
+  const DIRECTION_POPUP_UNDO_LIMIT = 30;
 
   const DEFAULT_DIRECTION_AVATARS = {
     up: '\u2b06',
