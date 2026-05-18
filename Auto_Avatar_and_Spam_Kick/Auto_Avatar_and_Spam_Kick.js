@@ -58,6 +58,9 @@
   const MIN_COMMAND_GAP_MS   = 40;
   const DIRECTION_THROTTLE_MS = 40;
   const CHAT_FOCUS_RETRY_MS  = 120;
+  const PROFILE_POPUP_UNDO_LIMIT = 100;
+  const PROFILE_ORDER_UNDO_LIMIT = 100;
+  const DIRECTION_POPUP_UNDO_LIMIT = 100;
 
   const DEFAULT_DIRECTION_AVATARS = {
     up: '\u2b06',
@@ -440,8 +443,16 @@
   let popupActiveCellIdx = 0;
   let popupFocusCellIdx = null;
   let profilePopupStableSnapshot = null;
+  let profilePopupUndoStack = [];
+  let profilePopupRedoStack = [];
+  let profilePopupNotice = null;
+  let profileOrderUndoStack = [];
+  let profileOrderRedoStack = [];
   let isDirectionPopupOpen = false;
   let directionPopupEl = null;
+  let directionPopupUndoStack = [];
+  let directionPopupRedoStack = [];
+  let directionPopupNotice = null;
 
   let autoActive = false;
   let autoProfile = null;
@@ -549,6 +560,39 @@
     if (!target) return false;
     const tag = target.tagName;
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+  }
+
+  function isUndoShortcut(e) {
+    return !!e.ctrlKey
+      && !e.shiftKey
+      && !e.altKey
+      && !e.metaKey
+      && !e.isComposing
+      && String(e.key || '').toLowerCase() === 'z';
+  }
+
+  function isRedoShortcut(e) {
+    return !!e.ctrlKey
+      && !e.shiftKey
+      && !e.altKey
+      && !e.metaKey
+      && !e.isComposing
+      && String(e.key || '').toLowerCase() === 'y';
+  }
+
+  function sameStringArray(a, b) {
+    return Array.isArray(a)
+      && Array.isArray(b)
+      && a.length === b.length
+      && a.every((value, idx) => value === b[idx]);
+  }
+
+  function focusPanelForUndo() {
+    if (isTextTarget(document.activeElement)) return;
+    panel.tabIndex = -1;
+    setTimeout(() => {
+      if (document.body.contains(panel)) panel.focus({ preventScroll: true });
+    }, 0);
   }
 
   function addCommittedInputListener(input, handler) {
@@ -1063,6 +1107,92 @@
     panel.appendChild(section);
   }
 
+  function directionEditorSnapshot() {
+    return {
+      directionBindCode,
+      upKey,
+      downKey,
+      leftKey,
+      rightKey,
+      directionAvatars: clone(directionAvatars)
+    };
+  }
+
+  function sameDirectionSnapshot(a, b) {
+    return !!a && !!b && JSON.stringify(a) === JSON.stringify(b);
+  }
+
+  function applyDirectionEditorSnapshot(snapshot) {
+    if (!snapshot) return false;
+    directionBindCode = snapshot.directionBindCode;
+    upKey = snapshot.upKey;
+    downKey = snapshot.downKey;
+    leftKey = snapshot.leftKey;
+    rightKey = snapshot.rightKey;
+    directionAvatars = clone(snapshot.directionAvatars || DEFAULT_DIRECTION_AVATARS);
+    saveKey(DIRECTION_KEY, directionBindCode);
+    saveKey(UP_KEY, upKey);
+    saveKey(DOWN_KEY, downKey);
+    saveKey(LEFT_KEY, leftKey);
+    saveKey(RIGHT_KEY, rightKey);
+    for (const dir of Object.keys(DEFAULT_DIRECTION_AVATARS)) {
+      localStorage.setItem(DIRECTION_AVATAR_PREFIX + dir, directionAvatars[dir] ?? DEFAULT_DIRECTION_AVATARS[dir]);
+    }
+    lastDirection = '';
+    if (avatarMode === 'direction') updateDirectionAvatar(true);
+    return true;
+  }
+
+  function pushDirectionEditorUndo() {
+    const snapshot = directionEditorSnapshot();
+    const last = directionPopupUndoStack[directionPopupUndoStack.length - 1];
+    if (sameDirectionSnapshot(last, snapshot)) return false;
+    directionPopupUndoStack.push(snapshot);
+    if (directionPopupUndoStack.length > DIRECTION_POPUP_UNDO_LIMIT) directionPopupUndoStack.shift();
+    directionPopupRedoStack = [];
+    return true;
+  }
+
+  function restoreDirectionEditorUndo() {
+    while (directionPopupUndoStack.length) {
+      const snapshot = directionPopupUndoStack.pop();
+      if (!snapshot) continue;
+      const current = directionEditorSnapshot();
+      if (applyDirectionEditorSnapshot(snapshot)) {
+        directionPopupRedoStack.push(current);
+        if (directionPopupRedoStack.length > DIRECTION_POPUP_UNDO_LIMIT) directionPopupRedoStack.shift();
+        directionPopupNotice = { text: 'Undo restored direction settings.', color: '#6f6' };
+        render();
+        return true;
+      }
+    }
+    directionPopupNotice = { text: 'Nothing to undo.', color: '#888' };
+    renderDirectionPopup();
+    return false;
+  }
+
+  function restoreDirectionEditorRedo() {
+    while (directionPopupRedoStack.length) {
+      const snapshot = directionPopupRedoStack.pop();
+      if (!snapshot) continue;
+      const current = directionEditorSnapshot();
+      if (applyDirectionEditorSnapshot(snapshot)) {
+        directionPopupUndoStack.push(current);
+        if (directionPopupUndoStack.length > DIRECTION_POPUP_UNDO_LIMIT) directionPopupUndoStack.shift();
+        directionPopupNotice = { text: 'Redo restored direction settings.', color: '#6f6' };
+        render();
+        return true;
+      }
+    }
+    directionPopupNotice = { text: 'Nothing to redo.', color: '#888' };
+    renderDirectionPopup();
+    return false;
+  }
+
+  function isDirectionEditorBindTarget(target) {
+    return ['up', 'down', 'left', 'right'].includes(target);
+  }
+
   function renderDirectionPopup() {
     if (directionPopupEl) {
       directionPopupEl.remove();
@@ -1082,13 +1212,41 @@
       style: 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;border-bottom:1px solid #2a2a3e;padding-bottom:7px;'
     });
     header.appendChild(mkEl('span', { className: 'aa-panel-title', textContent: 'DIRECTION EDITOR' }));
+    const headerTools = mkEl('div', { style: 'display:flex;align-items:center;gap:4px;' });
+    const dirNotice = mkEl('span', { textContent: '', style: 'font-size:10px;color:#6f6;font-weight:800;min-width:160px;text-align:right;' });
+    if (directionPopupNotice) {
+      dirNotice.textContent = directionPopupNotice.text;
+      dirNotice.style.color = directionPopupNotice.color;
+      directionPopupNotice = null;
+    }
+    const undoBtn = mkEl('button', { className: 'aa-btn', textContent: 'Undo', title: 'Undo direction editor change (Ctrl+Z)' });
+    undoBtn.disabled = directionPopupUndoStack.length === 0;
+    undoBtn.onclick = restoreDirectionEditorUndo;
+    const redoBtn = mkEl('button', { className: 'aa-btn', textContent: 'Redo', title: 'Redo direction editor change (Ctrl+Y)' });
+    redoBtn.disabled = directionPopupRedoStack.length === 0;
+    redoBtn.onclick = restoreDirectionEditorRedo;
     const closeBtn = mkEl('button', { className: 'aa-btn', textContent: 'Close', title: 'Close direction editor' });
     closeBtn.onclick = () => {
       isDirectionPopupOpen = false;
       renderDirectionPopup();
     };
-    header.appendChild(closeBtn);
+    headerTools.appendChild(dirNotice);
+    headerTools.appendChild(undoBtn);
+    headerTools.appendChild(redoBtn);
+    headerTools.appendChild(closeBtn);
+    header.appendChild(headerTools);
     popup.appendChild(header);
+    overlay.addEventListener('keydown', (e) => {
+      if (isUndoShortcut(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        restoreDirectionEditorUndo();
+      } else if (isRedoShortcut(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        restoreDirectionEditorRedo();
+      }
+    }, true);
 
     popup.appendChild(mkEl('div', { className: 'aa-label', textContent: 'Movement keys', style: 'margin-bottom:5px;' }));
     const moveGrid = mkEl('div', { style: 'display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:6px;width:100%;margin-bottom:10px;' });
@@ -1128,6 +1286,7 @@
       });
       input.addEventListener('keydown', e => e.stopPropagation());
       addCommittedInputListener(input, () => {
+        if (directionAvatars[dir] !== input.value) pushDirectionEditorUndo();
         saveDirectionAvatar(dir, input.value);
         if (avatarMode === 'direction' && currentDirection() === dir) updateDirectionAvatar(true);
       });
@@ -1209,11 +1368,18 @@
     profileLabelRow.appendChild(mkEl('span', { className: 'aa-label', textContent: 'Profiles' }));
 
     const actions = mkEl('div', { style: 'display:flex;gap:4px;align-items:center;' });
-    const sortBtn = mkEl('button', { className: 'aa-btn', textContent: 'A-Z', title: 'Sort profiles A-Z' });
+    const sortBtn = mkEl('button', { className: 'aa-btn', textContent: 'A-Z', title: 'Sort profiles A-Z. Ctrl+Z restores previous order.' });
     sortBtn.onclick = () => {
-      profileOrder.sort((a, b) => a.localeCompare(b));
+      const sortedOrder = [...profileOrder].sort((a, b) => a.localeCompare(b));
+      if (sameStringArray(profileOrder, sortedOrder)) {
+        focusPanelForUndo();
+        return;
+      }
+      pushProfileOrderUndo();
+      profileOrder = sortedOrder;
       saveOrder(profileOrder);
       render();
+      focusPanelForUndo();
     };
     actions.appendChild(sortBtn);
 
@@ -1419,6 +1585,69 @@
     return profile?.items?.filter(isBlankProfileItem).length || 0;
   }
 
+  function pushProfileOrderUndo() {
+    const snapshot = {
+      order: [...profileOrder],
+      activeProfile
+    };
+    const last = profileOrderUndoStack[profileOrderUndoStack.length - 1];
+    if (last && sameStringArray(last.order, snapshot.order) && last.activeProfile === snapshot.activeProfile) return false;
+    profileOrderUndoStack.push(snapshot);
+    if (profileOrderUndoStack.length > PROFILE_ORDER_UNDO_LIMIT) profileOrderUndoStack.shift();
+    profileOrderRedoStack = [];
+    return true;
+  }
+
+  function currentProfileOrderSnapshot() {
+    return {
+      order: [...profileOrder],
+      activeProfile
+    };
+  }
+
+  function applyProfileOrderSnapshot(snapshot) {
+    if (!snapshot || !Array.isArray(snapshot.order)) return false;
+    const existing = snapshot.order.filter(name => profiles[name]);
+    const missing = Object.keys(profiles).filter(name => !existing.includes(name));
+    profileOrder = [...existing, ...missing];
+    if (snapshot.activeProfile && profiles[snapshot.activeProfile]) activeProfile = snapshot.activeProfile;
+    saveOrder(profileOrder);
+    saveActiveProfile();
+    render();
+    focusPanelForUndo();
+    return true;
+  }
+
+  function restoreProfileOrderUndo() {
+    while (profileOrderUndoStack.length) {
+      const snapshot = profileOrderUndoStack.pop();
+      const current = currentProfileOrderSnapshot();
+      if (applyProfileOrderSnapshot(snapshot)) {
+        profileOrderRedoStack.push(current);
+        if (profileOrderRedoStack.length > PROFILE_ORDER_UNDO_LIMIT) profileOrderRedoStack.shift();
+        setHint('Profile order restored.', '#6f6');
+        return true;
+      }
+    }
+    setHint('No profile order change to undo.', '#888');
+    return false;
+  }
+
+  function restoreProfileOrderRedo() {
+    while (profileOrderRedoStack.length) {
+      const snapshot = profileOrderRedoStack.pop();
+      const current = currentProfileOrderSnapshot();
+      if (applyProfileOrderSnapshot(snapshot)) {
+        profileOrderUndoStack.push(current);
+        if (profileOrderUndoStack.length > PROFILE_ORDER_UNDO_LIMIT) profileOrderUndoStack.shift();
+        setHint('Profile order redone.', '#6f6');
+        return true;
+      }
+    }
+    setHint('No profile order change to redo.', '#888');
+    return false;
+  }
+
   function rememberStableProfile(profileName = activeProfile) {
     const profile = getProfile(profileName);
     if (!profile) return false;
@@ -1429,6 +1658,95 @@
       items: clone(profile.items)
     };
     return true;
+  }
+
+  function profileEditorSnapshot(profileName = activeProfile) {
+    const profile = getProfile(profileName);
+    if (!profile) return null;
+    return {
+      name: profileName,
+      cursor: asNonNegativeInt(profile.cursor, 0),
+      activeCellIdx: popupActiveCellIdx,
+      items: clone(profile.items)
+    };
+  }
+
+  function sameProfileSnapshot(a, b) {
+    return !!a && !!b
+      && a.name === b.name
+      && a.cursor === b.cursor
+      && JSON.stringify(a.items) === JSON.stringify(b.items);
+  }
+
+  function pushProfileEditorUndo(profileName = activeProfile) {
+    const snapshot = profileEditorSnapshot(profileName);
+    if (!snapshot) return false;
+    const last = profilePopupUndoStack[profilePopupUndoStack.length - 1];
+    if (sameProfileSnapshot(last, snapshot)) return false;
+    profilePopupUndoStack.push(snapshot);
+    if (profilePopupUndoStack.length > PROFILE_POPUP_UNDO_LIMIT) profilePopupUndoStack.shift();
+    profilePopupRedoStack = [];
+    return true;
+  }
+
+  function hasProfileEditorUndo(profileName = activeProfile) {
+    return profilePopupUndoStack.some(snapshot => snapshot.name === profileName);
+  }
+
+  function hasProfileEditorRedo(profileName = activeProfile) {
+    return profilePopupRedoStack.some(snapshot => snapshot.name === profileName);
+  }
+
+  function applyProfileEditorSnapshot(snapshot) {
+    const profile = snapshot && snapshot.name === activeProfile ? getProfile(activeProfile) : null;
+    if (!profile) return false;
+    profile.items = clone(snapshot.items);
+    profile.cursor = Math.min(snapshot.cursor, Math.max(0, profile.items.length - 1));
+    popupActiveCellIdx = Math.max(0, Math.min(snapshot.activeCellIdx, profile.items.length < 200 ? profile.items.length : profile.items.length - 1));
+    popupFocusCellIdx = null;
+    saveProfiles();
+    rememberStableProfile(activeProfile);
+    return true;
+  }
+
+  function restoreProfileEditorUndo(profileName = activeProfile) {
+    while (profilePopupUndoStack.length) {
+      const snapshot = profilePopupUndoStack.pop();
+      if (!snapshot || snapshot.name !== profileName) continue;
+      const current = profileEditorSnapshot(profileName);
+      if (applyProfileEditorSnapshot(snapshot)) {
+        if (current) {
+          profilePopupRedoStack.push(current);
+          if (profilePopupRedoStack.length > PROFILE_POPUP_UNDO_LIMIT) profilePopupRedoStack.shift();
+        }
+        profilePopupNotice = { text: 'Undo restored the previous profile state.', color: '#6f6' };
+        renderProfilePopup();
+        return true;
+      }
+    }
+    profilePopupNotice = { text: 'Nothing to undo.', color: '#888' };
+    renderProfilePopup();
+    return false;
+  }
+
+  function restoreProfileEditorRedo(profileName = activeProfile) {
+    while (profilePopupRedoStack.length) {
+      const snapshot = profilePopupRedoStack.pop();
+      if (!snapshot || snapshot.name !== profileName) continue;
+      const current = profileEditorSnapshot(profileName);
+      if (applyProfileEditorSnapshot(snapshot)) {
+        if (current) {
+          profilePopupUndoStack.push(current);
+          if (profilePopupUndoStack.length > PROFILE_POPUP_UNDO_LIMIT) profilePopupUndoStack.shift();
+        }
+        profilePopupNotice = { text: 'Redo restored the next profile state.', color: '#6f6' };
+        renderProfilePopup();
+        return true;
+      }
+    }
+    profilePopupNotice = { text: 'Nothing to redo.', color: '#888' };
+    renderProfilePopup();
+    return false;
   }
 
   function restoreStableProfileSnapshot(profileName = activeProfile) {
@@ -1480,7 +1798,12 @@
       profilePopupEl = null;
     }
     if (!isProfilePopupOpen) return;
-    if (resetText) rememberStableProfile(activeProfile);
+    if (resetText) {
+      rememberStableProfile(activeProfile);
+      profilePopupUndoStack = [];
+      profilePopupRedoStack = [];
+      profilePopupNotice = null;
+    }
 
     const profile = getProfile();
     if (!profile) return;
@@ -1507,6 +1830,18 @@
     };
     header.appendChild(closeBtn);
     popup.appendChild(header);
+    overlay.addEventListener('keydown', (e) => {
+      if (e.target?.id === 'aa-profile-text') return;
+      if (isUndoShortcut(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        restoreProfileEditorUndo(activeProfile);
+      } else if (isRedoShortcut(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        restoreProfileEditorRedo(activeProfile);
+      }
+    }, true);
 
     const gridHeader = mkEl('div', {
       style: 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;'
@@ -1516,6 +1851,11 @@
       textContent: 'Avatar Grid 20x5 - max 20x10'
     }));
     const popupHint = mkEl('span', { textContent: '', style: 'font-size:10px;color:#6f6;font-weight:800;min-width:190px;text-align:right;' });
+    if (profilePopupNotice) {
+      popupHint.textContent = profilePopupNotice.text;
+      popupHint.style.color = profilePopupNotice.color;
+      profilePopupNotice = null;
+    }
     gridHeader.appendChild(popupHint);
     popup.appendChild(gridHeader);
 
@@ -1622,6 +1962,7 @@
         updatePopupInputState(input, cell);
         if (isStoredCell) {
           if (!hasValue) {
+            pushProfileEditorUndo(activeProfile);
             profile.items[itemIdx] = { type: 'avatar', value: '' };
             if (profile.cursor >= profile.items.length) profile.cursor = 0;
             popupActiveCellIdx = Math.max(0, Math.min(itemIdx, profile.items.length < 200 ? profile.items.length : profile.items.length - 1));
@@ -1631,6 +1972,7 @@
             renderProfilePopup();
             return;
           }
+          if (popupCellValue(profile.items[itemIdx]) !== value) pushProfileEditorUndo(activeProfile);
           profile.items[itemIdx] = infoToItem(value);
           saveProfiles();
           rememberStableProfile(activeProfile);
@@ -1642,6 +1984,7 @@
           return;
         }
         if (isAppendCell && hasValue) {
+          pushProfileEditorUndo(activeProfile);
           profile.items.push(infoToItem(value));
           popupActiveCellIdx = Math.max(0, profile.items.length - 1);
           popupFocusCellIdx = popupActiveCellIdx;
@@ -1656,6 +1999,8 @@
     }
     refreshActiveCell();
     setupDragList(grid, '.aa-popup-cell, .aa-popup-empty.stored', (fromIdx, toIdx) => {
+      if (fromIdx === toIdx) return;
+      pushProfileEditorUndo(activeProfile);
       const moved = profile.items.splice(fromIdx, 1)[0];
       profile.items.splice(toIdx, 0, moved);
       profile.cursor = Math.min(profile.cursor, Math.max(0, profile.items.length - 1));
@@ -1679,11 +2024,15 @@
       textContent: 'Cell ' + (popupActiveCellIdx + 1),
       style: 'font-size:10px;color:#8f99dc;font-weight:800;margin-right:3px;'
     });
+    const undoBtn = mkEl('button', { className: 'aa-btn', textContent: 'Undo', title: 'Undo last profile editor change (Ctrl+Z)' });
+    const redoBtn = mkEl('button', { className: 'aa-btn', textContent: 'Redo', title: 'Redo last profile editor change (Ctrl+Y)' });
     insertCellBtn = mkEl('button', { className: 'aa-btn', textContent: 'Insert', title: 'Insert empty cell before selected cell' });
     deleteCellBtn = mkEl('button', { className: 'aa-btn danger', textContent: 'Delete', title: 'Delete selected cell' });
     const exportBtn = mkEl('button', { className: 'aa-btn', textContent: 'Export', title: 'Export current profile as share text' });
     const importBtn = mkEl('button', { className: 'aa-btn warn', textContent: 'Import', title: 'Import text and overwrite current profile' });
     textTools.appendChild(selectedLabel);
+    textTools.appendChild(undoBtn);
+    textTools.appendChild(redoBtn);
     textTools.appendChild(insertCellBtn);
     textTools.appendChild(deleteCellBtn);
     textTools.appendChild(exportBtn);
@@ -1714,6 +2063,7 @@
         return;
       }
       const insertAt = Math.min(popupActiveCellIdx, profile.items.length);
+      pushProfileEditorUndo(activeProfile);
       profile.items.splice(insertAt, 0, { type: 'avatar', value: '' });
       if (profile.cursor >= insertAt) profile.cursor++;
       popupActiveCellIdx = insertAt;
@@ -1724,6 +2074,7 @@
     deleteCellBtn.onclick = () => {
       const deleteAt = popupActiveCellIdx;
       if (deleteAt < 0 || deleteAt >= profile.items.length) return;
+      pushProfileEditorUndo(activeProfile);
       profile.items.splice(deleteAt, 1);
       if (profile.cursor > deleteAt) profile.cursor--;
       if (profile.cursor >= profile.items.length) profile.cursor = 0;
@@ -1734,6 +2085,10 @@
     };
     refreshActiveCell();
     syncTextArea();
+    undoBtn.disabled = !hasProfileEditorUndo(activeProfile);
+    redoBtn.disabled = !hasProfileEditorRedo(activeProfile);
+    undoBtn.onclick = () => restoreProfileEditorUndo(activeProfile);
+    redoBtn.onclick = () => restoreProfileEditorRedo(activeProfile);
 
     exportBtn.onclick = () => {
       if (!syncTextArea()) {
@@ -1750,6 +2105,7 @@
         return;
       }
       if (!confirm('Overwrite the current profile?')) return;
+      pushProfileEditorUndo(activeProfile);
       profile.items = parseItemsText(raw);
       profile.cursor = 0;
       saveProfiles();
@@ -1999,10 +2355,13 @@
 
   function setupProfileDrag(listEl) {
     setupDragList(listEl, '.aa-profile-item', (fromIdx, toIdx, meta) => {
+      if (fromIdx === toIdx) return;
+      pushProfileOrderUndo();
       const moved = profileOrder.splice(fromIdx, 1)[0];
       profileOrder.splice(toIdx, 0, moved);
       saveOrder(profileOrder);
       render();
+      focusPanelForUndo();
       restoreListScroll('.aa-profile-list', meta.scrollTop);
     }, 'vertical');
   }
@@ -2085,6 +2444,7 @@
   }
 
   function clearBind(target) {
+    if (isDirectionPopupOpen && isDirectionEditorBindTarget(target)) pushDirectionEditorUndo();
     if (target === 'profile') {
       getProfile().bindCode = 'NONE';
       saveProfiles();
@@ -2158,15 +2518,19 @@
         spamActionCode = code;
         saveKey(SPAM_ACTION_KEY, code);
       } else if (target === 'up') {
+        if (isDirectionPopupOpen) pushDirectionEditorUndo();
         upKey = code;
         saveKey(UP_KEY, code);
       } else if (target === 'down') {
+        if (isDirectionPopupOpen) pushDirectionEditorUndo();
         downKey = code;
         saveKey(DOWN_KEY, code);
       } else if (target === 'left') {
+        if (isDirectionPopupOpen) pushDirectionEditorUndo();
         leftKey = code;
         saveKey(LEFT_KEY, code);
       } else if (target === 'right') {
+        if (isDirectionPopupOpen) pushDirectionEditorUndo();
         rightKey = code;
         saveKey(RIGHT_KEY, code);
       }
@@ -2799,6 +3163,29 @@
   }
 
   function onTopKeyDown(e) {
+    if ((isUndoShortcut(e) || isRedoShortcut(e)) && !isTextTarget(e.target)) {
+      if (profilePopupEl && profilePopupEl.contains(e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isUndoShortcut(e)) restoreProfileEditorUndo(activeProfile);
+        else restoreProfileEditorRedo(activeProfile);
+        return;
+      }
+      if (directionPopupEl && directionPopupEl.contains(e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isUndoShortcut(e)) restoreDirectionEditorUndo();
+        else restoreDirectionEditorRedo();
+        return;
+      }
+      if (panel.contains(e.target) || document.activeElement === panel) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isUndoShortcut(e)) restoreProfileOrderUndo();
+        else restoreProfileOrderRedo();
+        return;
+      }
+    }
     handleKeyDown(e);
   }
 
