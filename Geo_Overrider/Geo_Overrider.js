@@ -202,7 +202,14 @@
             display: inline-block;
         }
     `;
-    document.head.appendChild(style);
+    // document-start có thể chạy trước khi <head> được tạo. Chờ head (hoặc
+    // documentElement) thay vì để lỗi appendChild làm dừng toàn bộ userscript.
+    function attachStyle() {
+        const target = document.head || document.documentElement;
+        if (!target) { setTimeout(attachStyle, 25); return; }
+        if (!style.isConnected) target.appendChild(style);
+    }
+    attachStyle();
 
     // ==================== UI PANEL STATE ====================
     let isMinimized    = SafeStorage.get(UI_STATE_KEY) === 'true';
@@ -258,15 +265,17 @@
     function applyPanelPosition(panel) {
         if (!panel) return;
         const pos = PosState.get();
-        if (pos && typeof pos.xPct === 'number' && !isNaN(pos.xPct)) {
+        if (pos && typeof pos.xPct === 'number' && Number.isFinite(pos.xPct) &&
+            typeof pos.yPct === 'number' && Number.isFinite(pos.yPct)) {
             panel.style.bottom = ''; panel.style.right = '';
             const maxX = Math.max(0, window.innerWidth  - panel.offsetWidth);
             const maxY = Math.max(0, window.innerHeight - panel.offsetHeight);
-            panel.style.left = (pos.xPct * maxX) + 'px';
-            panel.style.top  = (pos.yPct * maxY) + 'px';
+            panel.style.left = (Math.min(1, Math.max(0, pos.xPct)) * maxX) + 'px';
+            panel.style.top  = (Math.min(1, Math.max(0, pos.yPct)) * maxY) + 'px';
         } else {
-            panel.style.top  = ''; panel.style.left = '';
-            panel.style.bottom = '845px'; panel.style.right = '125px';
+            // Mặc định đặt panel trong góc phải bên dưới, luôn trong vùng nhìn thấy.
+            panel.style.top = ''; panel.style.left = '';
+            panel.style.bottom = '12px'; panel.style.right = '12px';
         }
     }
 
