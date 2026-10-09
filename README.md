@@ -61,7 +61,23 @@ Sau đó nhấn Ctrl + S để lưu script lại
 Kết quả đạt được sẽ trông như thế này
 <img width="1366" height="213" alt="Ảnh 10" src="https://github.com/user-attachments/assets/ea3d90b5-88e1-4fcb-99f3-6af87a9c084e" />
 
-
 Đến bước này thì tức là bạn đã cài xong script mà bạn cần.
 
-## Bước 6: Vào haxball.com và trải nghiệm!
+# Chú ý
+
+Có một số lúc bạn sẽ thấy con khỉ bị chột một mắt <img width="30" height="29" alt="chot 1 mat" src="https://github.com/user-attachments/assets/359ba895-c7b9-4b39-a1aa-2bc0d53cdc47" />. Đó là do bạn chưa bật 'Allow User Scripts' của Tampermonkey.
+
+Click chuột phải vào icon con khỉ ở góc trên bên phải màn hình, chọn Manage extension.
+
+<img width="280" height="338" alt="manage_extension" src="https://github.com/user-attachments/assets/a3b9e61d-a8a0-4dcc-aee4-143c8c7da51d" />
+
+Bật 'Allow User Scripts' lên.
+
+<img width="1366" height="575" alt="anh userscript" src="https://github.com/user-attachments/assets/f59ebea2-e72b-4e9a-b3dd-3f094475b471" />
+
+Để code hoạt động, bạn phải F5 trang web lại một lần.
+
+# Vào haxball.com và trải nghiệm!
+
+<img width="1366" height="768" alt="trai nghiem" src="https://github.com/user-attachments/assets/3899fc68-48d3-4212-8bfa-551ecba4e259" />
+
