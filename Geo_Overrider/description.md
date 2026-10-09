@@ -18,9 +18,10 @@ Các địa điểm được cài đặt theo mặc định.
 
 <img width="223" height="311" alt="ảnh 2" src="https://github.com/user-attachments/assets/4be2d481-1802-49ca-a817-ca4b7fd4a556" />
 
-Nếu muốn thêm một số địa chỉ khác thì thêm trực tiếp vào trong code luôn, bằng cách viết thêm các địa chỉ và tọa độ tương ứng (Có lẽ sau này sẽ update thêm tính năng "thêm địa chỉ" trên giao diện để trông thân thiện hơn)
+Nếu muốn thêm một số địa chỉ khác thì thêm trực tiếp trong giao diện luôn.
 
-<img width="927" height="116" alt="image" src="https://github.com/user-attachments/assets/a8df0f8f-8b54-4aef-8f07-eb3fce0f93b2" />
+<img width="221" height="289" alt="image" src="https://github.com/user-attachments/assets/a9b2fe93-3053-4649-b72e-92bc864713dc" />
+
 
 ## Chức năng thu nhỏ
 
